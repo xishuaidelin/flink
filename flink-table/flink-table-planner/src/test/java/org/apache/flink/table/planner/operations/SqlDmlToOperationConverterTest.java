@@ -29,6 +29,7 @@ import org.apache.flink.table.expressions.ResolvedExpression;
 import org.apache.flink.table.operations.BeginStatementSetOperation;
 import org.apache.flink.table.operations.DeleteFromFilterOperation;
 import org.apache.flink.table.operations.EndStatementSetOperation;
+import org.apache.flink.table.operations.ExplainFileOperation;
 import org.apache.flink.table.operations.ExplainOperation;
 import org.apache.flink.table.operations.Operation;
 import org.apache.flink.table.operations.QueryOperation;
@@ -37,6 +38,8 @@ import org.apache.flink.table.operations.StatementSetOperation;
 import org.apache.flink.table.planner.calcite.FlinkPlannerImpl;
 import org.apache.flink.table.planner.factories.TestUpdateDeleteTableFactory;
 import org.apache.flink.table.planner.parse.CalciteParser;
+import org.apache.flink.core.fs.Path;
+
 
 import org.apache.calcite.sql.SqlNode;
 import org.junit.jupiter.api.Test;
@@ -188,6 +191,22 @@ public class SqlDmlToOperationConverterTest extends SqlNodeToOperationConversion
         FlinkPlannerImpl planner = getPlannerBySqlDialect(SqlDialect.DEFAULT);
         final CalciteParser parser = getParserBySqlDialect(SqlDialect.DEFAULT);
         assertExplainDetails(parse(sql, planner, parser));
+    }
+
+    @Test
+    public void testRichExplainFilePath() {
+        final String sql = "explain plan for 'hdfs:////path/to/json'";
+        Path expectedFilePath = new Path("/path/to/json");
+        FlinkPlannerImpl planner = getPlannerBySqlDialect(SqlDialect.DEFAULT);
+        final CalciteParser parser = getParserBySqlDialect(SqlDialect.DEFAULT);
+        Operation operation = parse(sql, planner, parser);
+        assertThat(operation).isInstanceOf(ExplainOperation.class);
+        assertExplainFilePath(operation, expectedFilePath);
+    }
+
+    private void assertExplainFilePath(Operation operation, Path expected) {
+        assertThat((ExplainFileOperation) operation)
+                .satisfies(explain -> assertThat(explain.getFilePath()).isEqualTo(expected));
     }
 
     @Test
