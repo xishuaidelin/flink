@@ -21,6 +21,7 @@ import org.apache.flink.api.common.RuntimeExecutionMode
 import org.apache.flink.api.common.typeinfo.Types.STRING
 import org.apache.flink.api.scala._
 import org.apache.flink.configuration.{Configuration, CoreOptions, ExecutionOptions}
+import org.apache.flink.core.fs.FileSystem
 import org.apache.flink.core.testutils.FlinkAssertions.anyCauseMatches
 import org.apache.flink.streaming.api.environment.LocalStreamEnvironment
 import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
@@ -154,6 +155,57 @@ class TableEnvironmentTest {
     val expected = TableTestUtil.readFromResource("/explain/testStreamTableEnvironmentExplain.out")
     val actual = tEnv.explainSql("insert into MySink select first from MyTable")
     assertEquals(TableTestUtil.replaceStageId(expected), TableTestUtil.replaceStageId(actual))
+  }
+
+  @Test
+  def testExplainForLocalJsonFile(): Unit = {
+    val execEnv = StreamExecutionEnvironment.getExecutionEnvironment
+    execEnv.setParallelism(1)
+    val settings = EnvironmentSettings.newInstance().inStreamingMode().build()
+    val tableEnv = StreamTableEnvironment.create(execEnv, settings)
+
+    val srcTableDdl =
+      "CREATE TABLE MyTable (\n" + "  a bigint,\n" + "  b int,\n" + "  c varchar\n" + ") with (\n" + "  'connector' = 'values',\n" + "  'bounded' = 'false')"
+    tableEnv.executeSql(srcTableDdl)
+
+    val sinkTableDdl =
+      "CREATE TABLE MySink (\n" + "  a bigint,\n" + "  b int,\n" + "  c varchar\n" + ") with (\n" + "  'connector' = 'values',\n" + "  'table-sink-class' = 'DEFAULT')"
+    tableEnv.executeSql(sinkTableDdl)
+
+    val sql = "explain plan for '/Users/yeming/Downloads/flink_versions/testGetJsonPlan.json'"
+
+    val resultPath = "jsonplan/testGetJsonPlan.json"
+
+    val tableResult2 = tableEnv.executeSql(sql)
+    assertEquals(ResultKind.SUCCESS_WITH_CONTENT, tableResult2.getResultKind)
+    //    checkExplain( + //      "explain plan for select * from MyTable where a > 10",
+    //      "/explain/testExecuteSqlWithExplainSelect.out") +
+  }
+
+  @Test
+  def testExplainForHdfsJsonFile(): Unit = {
+
+    val execEnv = StreamExecutionEnvironment.getExecutionEnvironment
+    execEnv.setParallelism(1)
+
+    val settings = EnvironmentSettings.newInstance().inStreamingMode().build()
+
+    val tableEnv = StreamTableEnvironment.create(execEnv, settings)
+
+    val srcTableDdl =
+      "CREATE TABLE MyTable (\n" + "  a bigint,\n" + "  b int,\n" + "  c varchar\n" + ") with (\n" + "  'connector' = 'values',\n" + "  'bounded' = 'false')"
+    tableEnv.executeSql(srcTableDdl)
+
+    val sinkTableDdl =
+      "CREATE TABLE MySink (\n" + "  a bigint,\n" + "  b int,\n" + "  c varchar\n" + ") with (\n" + "  'connector' = 'values',\n" + "  'table-sink-class' = 'DEFAULT')"
+    tableEnv.executeSql(sinkTableDdl)
+
+    val sql = "explain plan for 'hdfs://localhost:9000/test/testGetJsonPlan.json'"
+
+    val resultPath = "jsonplan/testGetJsonPlan.json"
+
+    val tableResult2 = tableEnv.executeSql(sql)
+    assertEquals(ResultKind.SUCCESS_WITH_CONTENT, tableResult2.getResultKind)
   }
 
   @Test

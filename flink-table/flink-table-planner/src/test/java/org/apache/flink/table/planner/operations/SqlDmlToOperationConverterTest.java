@@ -18,6 +18,7 @@
 
 package org.apache.flink.table.planner.operations;
 
+import org.apache.flink.core.fs.Path;
 import org.apache.flink.sql.parser.dql.SqlRichExplain;
 import org.apache.flink.table.api.DataTypes;
 import org.apache.flink.table.api.ExplainDetail;
@@ -38,8 +39,6 @@ import org.apache.flink.table.operations.StatementSetOperation;
 import org.apache.flink.table.planner.calcite.FlinkPlannerImpl;
 import org.apache.flink.table.planner.factories.TestUpdateDeleteTableFactory;
 import org.apache.flink.table.planner.parse.CalciteParser;
-import org.apache.flink.core.fs.Path;
-
 
 import org.apache.calcite.sql.SqlNode;
 import org.junit.jupiter.api.Test;

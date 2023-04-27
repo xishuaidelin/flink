@@ -923,7 +923,7 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
                 return TableResultImpl.builder()
                         .resultKind(ResultKind.SUCCESS_WITH_CONTENT)
                         .schema(ResolvedSchema.of(Column.physical("result", DataTypes.STRING())))
-                        .data(Collections.singletonList(Row.of(cp.printJsonString())))
+                        .data(Collections.singletonList(Row.of(cp.asJsonString())))
                         .build();
             }
             ExplainDetail[] explainDetails =
