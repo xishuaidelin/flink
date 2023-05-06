@@ -25,6 +25,7 @@ import org.apache.flink.core.testutils.FlinkAssertions.anyCauseMatches
 import org.apache.flink.streaming.api.environment.LocalStreamEnvironment
 import org.apache.flink.streaming.api.scala.StreamExecutionEnvironment
 import org.apache.flink.table.api.bridge.scala.{StreamTableEnvironment, _}
+import org.apache.flink.table.api.config.TableConfigOptions
 import org.apache.flink.table.api.internal.TableEnvironmentInternal
 import org.apache.flink.table.catalog._
 import org.apache.flink.table.factories.{TableFactoryUtil, TableSourceFactoryContextImpl}
@@ -50,9 +51,11 @@ import org.junit.Assert.{assertEquals, assertFalse, assertTrue, fail}
 import org.junit.rules.{ExpectedException, TemporaryFolder}
 
 import java.io.File
+import java.nio.file.Paths
 import java.util.{Collections, UUID}
 
 import scala.annotation.meta.getter
+import scala.tools.nsc.classpath.FileUtils.FileOps
 
 class TableEnvironmentTest {
 
@@ -2153,6 +2156,43 @@ class TableEnvironmentTest {
     testUnsupportedExplain("explain plan without implementation for select * from MyTable")
     testUnsupportedExplain("explain plan as xml for select * from MyTable")
     testUnsupportedExplain("explain plan as json for select * from MyTable")
+  }
+
+  @Test
+  def testCompileAndExecutePlan(): Unit = {
+    tableEnv.getConfig.set(TableConfigOptions.PLAN_FORCE_RECOMPILE, Boolean.box(true))
+
+    val srcTableDdl =
+      "CREATE TABLE MyTable (\n" + "  a bigint,\n" + "  b int,\n" + "  c varchar\n" + ") with (\n" + "  'connector' = 'values',\n" + "  'bounded' = 'false')"
+    assertEquals(ResultKind.SUCCESS, tableEnv.executeSql(srcTableDdl).getResultKind)
+
+    val sinkTableDdl =
+      "CREATE TABLE MySink (\n" + "  a bigint,\n" + "  b int,\n" + "  c varchar\n" + ") with (\n" + "  'connector' = 'values',\n" + "  'table-sink-class' = 'DEFAULT')"
+    assertEquals(ResultKind.SUCCESS, tableEnv.executeSql(sinkTableDdl).getResultKind)
+
+    val planfile = tempFolder.newFile("compile1.json")
+    var file = "file://" + planfile.toPath
+
+    var sql = String.format("COMPILE PLAN '%s' FOR INSERT INTO MySink SELECT * FROM MyTable", file)
+    assertEquals(ResultKind.SUCCESS, tableEnv.executeSql(sql).getResultKind)
+
+    sql = String.format("EXECUTE PLAN '%s'", file)
+    assertEquals(ResultKind.SUCCESS_WITH_CONTENT, tableEnv.executeSql(sql).getResultKind)
+
+    val planPath = tempFolder.getRoot.getPath
+    var path = "file://" + planPath + "/compile2.json"
+
+    sql = String.format("COMPILE PLAN '%s' FOR INSERT INTO MySink SELECT * FROM MyTable", path)
+    assertEquals(ResultKind.SUCCESS, tableEnv.executeSql(sql).getResultKind)
+
+    sql = String.format("EXECUTE PLAN '%s'", path)
+    assertEquals(ResultKind.SUCCESS_WITH_CONTENT, tableEnv.executeSql(sql).getResultKind)
+
+    path = "file://" + planPath + "/compile3.json"
+    sql = String.format(
+      "COMPILE and EXECUTE plan '%s' FOR INSERT INTO MySink SELECT * FROM MyTable",
+      path)
+    assertEquals(ResultKind.SUCCESS_WITH_CONTENT, tableEnv.executeSql(sql).getResultKind)
   }
 
   private def testUnsupportedExplain(explain: String): Unit = {

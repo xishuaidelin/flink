@@ -104,10 +104,8 @@ import org.apache.flink.util.FlinkUserCodeClassLoaders;
 import org.apache.flink.util.MutableURLClassLoader;
 import org.apache.flink.util.Preconditions;
 
-import java.io.File;
 import java.io.IOException;
 import java.net.URL;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -731,11 +729,11 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
     }
 
     private CompiledPlan compilePlanAndWrite(
-            String filePath, boolean ifNotExists, Operation operation) {
-        File file = Paths.get(filePath).toFile();
-        if (file.exists()) {
+            String filePath, boolean ifNotExists, Operation operation) throws IOException {
+        String localPath = resourceManager.getLocalUrl(filePath).getPath();
+        if (resourceManager.exists(filePath)) {
             if (ifNotExists) {
-                return loadPlan(PlanReference.fromFile(filePath));
+                return loadPlan(PlanReference.fromFile(localPath));
             }
 
             if (!tableConfig.get(TableConfigOptions.PLAN_FORCE_RECOMPILE)) {
@@ -761,7 +759,9 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
                             + ". This is a bug, please file an issue.");
         }
 
-        compiledPlan.writeToFile(file, false);
+        compiledPlan.writeToFile(localPath, false);
+        resourceManager.updateFilePath(filePath);
+
         return compiledPlan;
     }
 
@@ -938,24 +938,37 @@ public class TableEnvironmentImpl implements TableEnvironmentInternal {
             return executeQueryOperation((QueryOperation) operation);
         } else if (operation instanceof ExecutePlanOperation) {
             ExecutePlanOperation executePlanOperation = (ExecutePlanOperation) operation;
-            return (TableResultInternal)
-                    executePlan(PlanReference.fromFile(executePlanOperation.getFilePath()));
+            try {
+                URL localUrl = resourceManager.getLocalUrl(executePlanOperation.getFilePath());
+                return (TableResultInternal)
+                        executePlan(PlanReference.fromFile(localUrl.getPath()));
+            } catch (IOException e) {
+                throw new TableException(e.getMessage());
+            }
         } else if (operation instanceof CompilePlanOperation) {
             CompilePlanOperation compilePlanOperation = (CompilePlanOperation) operation;
-            compilePlanAndWrite(
-                    compilePlanOperation.getFilePath(),
-                    compilePlanOperation.isIfNotExists(),
-                    compilePlanOperation.getOperation());
-            return TableResultImpl.TABLE_RESULT_OK;
+            try {
+                compilePlanAndWrite(
+                        compilePlanOperation.getFilePath(),
+                        compilePlanOperation.isIfNotExists(),
+                        compilePlanOperation.getOperation());
+                return TableResultImpl.TABLE_RESULT_OK;
+            } catch (IOException e) {
+                throw new TableException(e.getMessage());
+            }
         } else if (operation instanceof CompileAndExecutePlanOperation) {
             CompileAndExecutePlanOperation compileAndExecutePlanOperation =
                     (CompileAndExecutePlanOperation) operation;
-            CompiledPlan compiledPlan =
-                    compilePlanAndWrite(
-                            compileAndExecutePlanOperation.getFilePath(),
-                            true,
-                            compileAndExecutePlanOperation.getOperation());
-            return (TableResultInternal) compiledPlan.execute();
+            try {
+                CompiledPlan compiledPlan =
+                        compilePlanAndWrite(
+                                compileAndExecutePlanOperation.getFilePath(),
+                                true,
+                                compileAndExecutePlanOperation.getOperation());
+                return (TableResultInternal) compiledPlan.execute();
+            } catch (IOException e) {
+                throw new TableException(e.getMessage());
+            }
         } else if (operation instanceof AnalyzeTableOperation) {
             if (isStreamingMode) {
                 throw new TableException("ANALYZE TABLE is not supported for streaming mode now");

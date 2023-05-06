@@ -18,26 +18,18 @@
 
 package org.apache.flink.table.sql.codegen;
 
-import org.apache.flink.test.resources.ResourceTestUtils;
 import org.apache.flink.test.util.SQLJobSubmission;
 import org.apache.flink.tests.util.flink.ClusterController;
 import org.apache.flink.util.FileUtils;
-import org.apache.flink.util.OperatingSystem;
 
 import org.apache.hadoop.conf.Configuration;
-import org.apache.hadoop.fs.FileUtil;
-import org.apache.hadoop.hdfs.MiniDFSCluster;
-import org.junit.After;
 import org.junit.Assert;
-import org.junit.Assume;
 import org.junit.Before;
-import org.junit.BeforeClass;
 import org.junit.Test;
 
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
@@ -45,23 +37,10 @@ import java.util.List;
 import java.util.Map;
 
 /** End to End tests for using remote jar. */
-public class UsingRemoteJarITCase extends SqlITCaseBase {
-    private static final Path HADOOP_CLASSPATH =
-            ResourceTestUtils.getResource(".*hadoop.classpath");
-
-    private MiniDFSCluster hdfsCluster;
-    private org.apache.hadoop.fs.Path hdPath;
-    private org.apache.hadoop.fs.FileSystem hdfs;
+public class UsingRemoteJarITCase extends RemoteITCaseBase {
 
     public UsingRemoteJarITCase(String executionMode) {
         super(executionMode);
-    }
-
-    @BeforeClass
-    public static void verifyOS() {
-        Assume.assumeTrue(
-                "HDFS cluster cannot be started on Windows without extensions.",
-                !OperatingSystem.isWindows());
     }
 
     @Before
@@ -71,15 +50,8 @@ public class UsingRemoteJarITCase extends SqlITCaseBase {
     }
 
     private void createHDFS() {
+        Configuration hdConf = configureHDFS();
         try {
-            Configuration hdConf = new Configuration();
-
-            File baseDir = new File("./target/hdfs/hdfsTest").getAbsoluteFile();
-            FileUtil.fullyDelete(baseDir);
-            hdConf.set(MiniDFSCluster.HDFS_MINIDFS_BASEDIR, baseDir.getAbsolutePath());
-            MiniDFSCluster.Builder builder = new MiniDFSCluster.Builder(hdConf);
-            hdfsCluster = builder.build();
-
             hdPath = new org.apache.hadoop.fs.Path("/test.jar");
             hdfs = hdPath.getFileSystem(hdConf);
 
@@ -88,16 +60,6 @@ public class UsingRemoteJarITCase extends SqlITCaseBase {
         } catch (Throwable e) {
             e.printStackTrace();
             Assert.fail("Test failed " + e.getMessage());
-        }
-    }
-
-    @After
-    public void destroyHDFS() {
-        try {
-            hdfs.delete(hdPath, false);
-            hdfsCluster.shutdown();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
         }
     }
 

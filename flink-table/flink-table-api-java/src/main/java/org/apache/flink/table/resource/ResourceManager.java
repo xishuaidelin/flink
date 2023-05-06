@@ -40,10 +40,12 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Closeable;
+import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -81,6 +83,70 @@ public class ResourceManager implements Closeable {
                         String.format("flink-table-%s", UUID.randomUUID()));
         this.resourceInfos = new HashMap<>();
         this.userClassLoader = userClassLoader;
+    }
+
+    public boolean exists(Path filePath) throws IOException {
+        return FileSystem.getUnguardedFileSystem(filePath.toUri()).exists(filePath);
+    }
+
+    public boolean exists(String filePath) throws IOException {
+        return exists(new Path(filePath));
+    }
+
+    /**
+     * Register the filePath of flink filesystem. If it is remote filesystem and the file exists
+     * then download the file at local. register the filePath map to localURL.
+     */
+    public void registerFsResources(Path filePath) throws IOException {
+        ResourceUri resourceUri = new ResourceUri(ResourceType.FILE, filePath.toUri().toString());
+        if (!resourceInfos.containsKey(resourceUri)) {
+            checkFsResources(filePath);
+            URL localUrl;
+            // check resource scheme
+            String scheme = StringUtils.lowerCase(filePath.toUri().getScheme());
+            // download resource to local path firstly if in remote
+            if (scheme != null && !FILE_SCHEME.equals(scheme)) {
+                if (exists(filePath)) {
+                    localUrl = downloadResource(filePath);
+                } else {
+                    localUrl = getURLFromPath(getResourceLocalPath(filePath));
+                }
+            } else {
+                localUrl = getURLFromPath(filePath);
+            }
+            File file = Paths.get(localUrl.getPath()).toFile();
+            if (!file.getParentFile().exists()) {
+                file.getParentFile().mkdirs();
+            }
+            resourceInfos.put(resourceUri, localUrl);
+        }
+    }
+
+    public URL getLocalUrl(String filePath) throws IOException {
+        Path path = new Path(filePath);
+        return getLocalUrl(path);
+    }
+
+    /**
+     * Get the local URL of given Path.if no corresponding value in resourceInfos means the path
+     * hasn't registered before.
+     */
+    public URL getLocalUrl(Path filePath) throws IOException {
+        ResourceUri resourceUri = new ResourceUri(ResourceType.FILE, filePath.toUri().toString());
+        if (!resourceInfos.containsKey(resourceUri)) {
+            registerFsResources(filePath);
+        }
+        return resourceInfos.get(resourceUri);
+    }
+
+    /** Upload the file to remote. */
+    public void updateFilePath(String remote) throws IOException {
+        Path path = new Path(remote);
+        String scheme = StringUtils.lowerCase(path.toUri().getScheme());
+        if (scheme != null && !FILE_SCHEME.equals(scheme)) {
+            Path localPath = new Path(getLocalUrl(path).getPath());
+            FileUtils.copy(localPath, path, true);
+        }
     }
 
     /**
@@ -200,6 +266,18 @@ public class ResourceManager implements Closeable {
 
         if (exception != null) {
             throw exception;
+        }
+    }
+
+    private void checkFsResources(Path filepath) throws IOException {
+        FileSystem fs = FileSystem.getUnguardedFileSystem(filepath.toUri());
+
+        // register directory is not allowed for resource
+        if (fs.exists(filepath) && fs.getFileStatus(filepath).isDir()) {
+            throw new ValidationException(
+                    String.format(
+                            "The registering or unregistering FileSystem resource [%s] is a directory that is not allowed.",
+                            filepath));
         }
     }
 
