@@ -38,18 +38,18 @@ public class StreamingJoinOperator extends AbstractStreamingJoinOperator {
     private static final long serialVersionUID = -376944622236540545L;
 
     // whether left side is outer side, e.g. left is outer but right is not when LEFT OUTER JOIN
-    private final boolean leftIsOuter;
+    protected final boolean leftIsOuter;
     // whether right side is outer side, e.g. right is outer but left is not when RIGHT OUTER JOIN
-    private final boolean rightIsOuter;
+    protected final boolean rightIsOuter;
 
     private transient JoinedRowData outRow;
     private transient RowData leftNullRow;
     private transient RowData rightNullRow;
 
     // left join state
-    private transient JoinRecordStateView leftRecordStateView;
+    protected transient JoinRecordStateView leftRecordStateView;
     // right join state
-    private transient JoinRecordStateView rightRecordStateView;
+    protected transient JoinRecordStateView rightRecordStateView;
 
     public StreamingJoinOperator(
             InternalTypeInfo<RowData> leftType,
@@ -197,7 +197,7 @@ public class StreamingJoinOperator extends AbstractStreamingJoinOperator {
      * @param otherSideStateView state of other side
      * @param inputIsLeft whether input side is left side
      */
-    private void processElement(
+    protected void processElement(
             RowData input,
             JoinRecordStateView inputSideStateView,
             JoinRecordStateView otherSideStateView,

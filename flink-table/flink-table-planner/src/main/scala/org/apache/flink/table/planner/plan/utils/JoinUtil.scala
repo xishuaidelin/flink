@@ -19,6 +19,7 @@ package org.apache.flink.table.planner.plan.utils
 
 import org.apache.flink.configuration.ReadableConfig
 import org.apache.flink.table.api.TableException
+import org.apache.flink.table.api.config.{ExecutionConfigOptions, ExperimentalExecutionConfigOptions}
 import org.apache.flink.table.data.RowData
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory
 import org.apache.flink.table.planner.codegen.{CodeGeneratorContext, ExprCodeGenerator, FunctionCodeGenerator}
@@ -28,6 +29,7 @@ import org.apache.flink.table.planner.plan.utils.IntervalJoinUtil.satisfyInterva
 import org.apache.flink.table.planner.plan.utils.TemporalJoinUtil.satisfyTemporalJoin
 import org.apache.flink.table.planner.plan.utils.WindowJoinUtil.satisfyWindowJoin
 import org.apache.flink.table.runtime.generated.GeneratedJoinCondition
+import org.apache.flink.table.runtime.operators.bundle.trigger.CountCoBundleTrigger
 import org.apache.flink.table.runtime.operators.join.stream.state.JoinInputSideSpec
 import org.apache.flink.table.runtime.types.PlannerTypeUtils
 import org.apache.flink.table.runtime.typeutils.InternalTypeInfo
@@ -48,6 +50,28 @@ import scala.collection.JavaConversions._
 
 /** Util for [[Join]]s. */
 object JoinUtil {
+
+  /** Creates a MiniBatch trigger for join depends on the config. */
+  def createMiniBatchTrigger(config: ReadableConfig): CountCoBundleTrigger[RowData, RowData] = {
+    val size = config.get(ExecutionConfigOptions.TABLE_EXEC_MINIBATCH_SIZE)
+    if (size <= 0) {
+      throw new IllegalArgumentException(
+        String.format(
+          "%s must be > 0, mini-batch join doesn't support binary buffer yet.",
+          ExecutionConfigOptions.TABLE_EXEC_MINIBATCH_SIZE.key()))
+    }
+    new CountCoBundleTrigger[RowData, RowData](size)
+  }
+
+  /** Returns true if mini-batch for join is enabled. */
+  def isMiniBatchEnabled(config: ReadableConfig): Boolean = {
+    val enableMiniBatch = config.get(ExecutionConfigOptions.TABLE_EXEC_MINIBATCH_ENABLED)
+    val enableJoinMiniBatch =
+      config.get(ExperimentalExecutionConfigOptions.TABLE_EXEC_STREAM_JOIN_MINI_BATCH_ENABLED)
+    val miniBatchLatency =
+      config.get(ExecutionConfigOptions.TABLE_EXEC_MINIBATCH_ALLOW_LATENCY).toMillis
+    enableMiniBatch && enableJoinMiniBatch && miniBatchLatency > 0
+  }
 
   /** Create [[JoinSpec]] according to the given join. */
   def createJoinSpec(join: Join): JoinSpec = {
