@@ -41,4 +41,24 @@ public final class RowDataUtil {
         RowKind kind = row.getRowKind();
         return kind == RowKind.UPDATE_BEFORE || kind == RowKind.DELETE;
     }
+
+    public static boolean isInsertMsg(RowData row) {
+        RowKind kind = row.getRowKind();
+        return kind == RowKind.INSERT;
+    }
+
+    public static boolean isUAMsg(RowData row) {
+        RowKind kind = row.getRowKind();
+        return kind == RowKind.UPDATE_AFTER;
+    }
+
+    public static boolean isUBMsg(RowData row) {
+        RowKind kind = row.getRowKind();
+        return kind == RowKind.UPDATE_BEFORE;
+    }
+
+    public static boolean isDeleteMsg(RowData row) {
+        RowKind kind = row.getRowKind();
+        return kind == RowKind.DELETE;
+    }
 }

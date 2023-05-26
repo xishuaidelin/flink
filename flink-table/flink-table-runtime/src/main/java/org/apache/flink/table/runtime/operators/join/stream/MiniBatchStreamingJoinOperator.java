@@ -25,14 +25,16 @@ import org.apache.flink.table.runtime.generated.GeneratedJoinCondition;
 import org.apache.flink.table.runtime.operators.bundle.trigger.BundleTriggerCallback;
 import org.apache.flink.table.runtime.operators.bundle.trigger.CoBundleTrigger;
 import org.apache.flink.table.runtime.operators.join.FlinkJoinType;
+import org.apache.flink.table.runtime.operators.join.stream.BatchBuffer.MiniBatchBuffer;
+import org.apache.flink.table.runtime.operators.join.stream.BatchBuffer.MiniBatchBufferHasUk;
+import org.apache.flink.table.runtime.operators.join.stream.BatchBuffer.MiniBatchBufferJkUk;
+import org.apache.flink.table.runtime.operators.join.stream.BatchBuffer.MiniBatchBufferNoUk;
 import org.apache.flink.table.runtime.operators.join.stream.state.JoinInputSideSpec;
 import org.apache.flink.table.runtime.operators.join.stream.state.JoinRecordStateView;
 import org.apache.flink.table.runtime.operators.metrics.SimpleGauge;
 import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -42,8 +44,8 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
 
     private final CoBundleTrigger<RowData, RowData> coBundleTrigger;
 
-    private transient Map<RowData, List<RowData>> leftBuffer;
-    private transient Map<RowData, List<RowData>> rightBuffer;
+    private transient MiniBatchBuffer leftBuffer;
+    private transient MiniBatchBuffer rightBuffer;
 
     private transient int leftBundleSize = 0;
     private transient int rightBundleSize = 0;
@@ -70,8 +72,22 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
     public void open() throws Exception {
         super.open();
 
-        this.leftBuffer = new HashMap<>();
-        this.rightBuffer = new HashMap<>();
+        if (leftInputSideSpec.joinKeyContainsUniqueKey()) {
+            this.leftBuffer = new MiniBatchBufferJkUk();
+        } else if (leftInputSideSpec.hasUniqueKey()) {
+            this.leftBuffer = new MiniBatchBufferHasUk();
+        } else {
+            this.leftBuffer = new MiniBatchBufferNoUk();
+        }
+
+        if (rightInputSideSpec.joinKeyContainsUniqueKey()) {
+            this.rightBuffer = new MiniBatchBufferJkUk();
+        } else if (rightInputSideSpec.hasUniqueKey()) {
+            this.rightBuffer = new MiniBatchBufferHasUk();
+        } else {
+            this.rightBuffer = new MiniBatchBufferNoUk();
+        }
+
         coBundleTrigger.registerCallback(this);
         coBundleTrigger.reset();
         LOG.info("Initialize MiniBatchStreamingJoinOperator successfully.");
@@ -87,21 +103,19 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
     @Override
     public void processElement1(StreamRecord<RowData> input) throws Exception {
         RowData joinKey = (RowData) getCurrentKey();
-        List<RowData> records = leftBuffer.computeIfAbsent(joinKey, k -> new ArrayList<>());
-        records.add(input.getValue());
+        RowData uniqueKey = leftInputSideSpec.getUniqueKeySelector().getKey(input.getValue());
+        leftBundleSize = leftBuffer.addRecord(joinKey, uniqueKey, input.getValue());
 
-        leftBundleSize++;
-        coBundleTrigger.onElement1(input.getValue());
+        coBundleTrigger.onBufferSize(leftBundleSize + rightBundleSize);
     }
 
     @Override
     public void processElement2(StreamRecord<RowData> input) throws Exception {
         RowData joinKey = (RowData) getCurrentKey();
-        List<RowData> records = rightBuffer.computeIfAbsent(joinKey, k -> new ArrayList<>());
-        records.add(input.getValue());
+        RowData uniqueKey = rightInputSideSpec.getUniqueKeySelector().getKey(input.getValue());
+        rightBundleSize = rightBuffer.addRecord(joinKey, uniqueKey, input.getValue());
 
-        rightBundleSize++;
-        coBundleTrigger.onElement2(input.getValue());
+        coBundleTrigger.onBufferSize(leftBundleSize + rightBundleSize);
     }
 
     @Override
@@ -146,16 +160,15 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
     }
 
     protected abstract ReduceStats processBundles(
-            Map<RowData, List<RowData>> leftBuffer, Map<RowData, List<RowData>> rightBuffer)
-            throws Exception;
+            MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer) throws Exception;
 
     protected int processSingleSideBundles(
-            Map<RowData, List<RowData>> inputBuffer,
+            MiniBatchBuffer inputBuffer,
             JoinRecordStateView inputSideStateView,
             JoinRecordStateView otherSideStateView,
             boolean inputIsLeft)
             throws Exception {
-        for (Map.Entry<RowData, List<RowData>> entry : inputBuffer.entrySet()) {
+        for (Map.Entry<RowData, List<RowData>> entry : inputBuffer.getMapRecords().entrySet()) {
             // set state key first
             setCurrentKey(entry.getKey());
             for (RowData rowData : entry.getValue()) {
@@ -249,8 +262,7 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
 
         @Override
         protected ReduceStats processBundles(
-                Map<RowData, List<RowData>> leftBuffer, Map<RowData, List<RowData>> rightBuffer)
-                throws Exception {
+                MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer) throws Exception {
             // process right
             int rightBundleReduceSize =
                     this.processSingleSideBundles(
@@ -273,8 +285,7 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
 
         @Override
         protected ReduceStats processBundles(
-                Map<RowData, List<RowData>> leftBuffer, Map<RowData, List<RowData>> rightBuffer)
-                throws Exception {
+                MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer) throws Exception {
             // more efficient to process right first for left out join, i.e, some retractions can be
             // avoided
             // process right
@@ -299,8 +310,7 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
 
         @Override
         protected ReduceStats processBundles(
-                Map<RowData, List<RowData>> leftBuffer, Map<RowData, List<RowData>> rightBuffer)
-                throws Exception {
+                MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer) throws Exception {
 
             // more efficient to process left first for right out join, i.e, some retractions can be
             // avoided
@@ -327,8 +337,7 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
 
         @Override
         protected ReduceStats processBundles(
-                Map<RowData, List<RowData>> leftBuffer, Map<RowData, List<RowData>> rightBuffer)
-                throws Exception {
+                MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer) throws Exception {
             // process right
             int rightBundleReduceSize =
                     this.processSingleSideBundles(
