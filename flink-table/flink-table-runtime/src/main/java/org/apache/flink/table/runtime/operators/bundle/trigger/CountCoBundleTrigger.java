@@ -58,6 +58,14 @@ public class CountCoBundleTrigger<IN1, IN2> implements CoBundleTrigger<IN1, IN2>
         }
     }
 
+    public void onBufferSize(final long size) throws Exception {
+        count = size;
+        if (count >= maxCount) {
+            callback.finishBundle();
+            reset();
+        }
+    }
+
     @Override
     public void reset() {
         count = 0;

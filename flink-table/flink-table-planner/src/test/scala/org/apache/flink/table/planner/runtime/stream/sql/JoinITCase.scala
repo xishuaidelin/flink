@@ -25,6 +25,7 @@ import org.apache.flink.table.planner.expressions.utils.FuncWithOpen
 import org.apache.flink.table.planner.factories.TestValuesTableFactory
 import org.apache.flink.table.planner.runtime.utils._
 import org.apache.flink.table.planner.runtime.utils.BatchTestBase.row
+import org.apache.flink.table.planner.runtime.utils.StreamingWithMiniBatchTestBase.MiniBatchMode
 import org.apache.flink.table.planner.runtime.utils.StreamingWithStateTestBase.StateBackendMode
 import org.apache.flink.types.Row
 
@@ -36,7 +37,8 @@ import org.junit.runners.Parameterized
 import scala.collection.{mutable, Seq}
 
 @RunWith(classOf[Parameterized])
-class JoinITCase(state: StateBackendMode) extends StreamingWithStateTestBase(state) {
+class JoinITCase(miniBatch: MiniBatchMode, state: StateBackendMode)
+  extends StreamingJoinWithMiniBatchTestBase(miniBatch, state) {
 
   val smallTuple5Data = List(
     (1, 1L, 0, "Hallo", 1L),

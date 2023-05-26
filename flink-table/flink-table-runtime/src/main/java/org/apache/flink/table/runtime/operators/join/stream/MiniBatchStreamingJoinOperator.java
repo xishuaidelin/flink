@@ -21,18 +21,22 @@ package org.apache.flink.table.runtime.operators.join.stream;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.table.data.RowData;
+import org.apache.flink.table.data.util.RowDataUtil;
 import org.apache.flink.table.runtime.generated.GeneratedJoinCondition;
 import org.apache.flink.table.runtime.operators.bundle.trigger.BundleTriggerCallback;
 import org.apache.flink.table.runtime.operators.bundle.trigger.CoBundleTrigger;
 import org.apache.flink.table.runtime.operators.join.FlinkJoinType;
+import org.apache.flink.table.runtime.operators.join.stream.batchbuffer.MiniBatchBuffer;
+import org.apache.flink.table.runtime.operators.join.stream.batchbuffer.MiniBatchBufferHasUk;
+import org.apache.flink.table.runtime.operators.join.stream.batchbuffer.MiniBatchBufferJkUk;
+import org.apache.flink.table.runtime.operators.join.stream.batchbuffer.MiniBatchBufferNoUk;
 import org.apache.flink.table.runtime.operators.join.stream.state.JoinInputSideSpec;
 import org.apache.flink.table.runtime.operators.join.stream.state.JoinRecordStateView;
 import org.apache.flink.table.runtime.operators.metrics.SimpleGauge;
 import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
 
 import java.io.Serializable;
-import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -42,8 +46,8 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
 
     private final CoBundleTrigger<RowData, RowData> coBundleTrigger;
 
-    private transient Map<RowData, List<RowData>> leftBuffer;
-    private transient Map<RowData, List<RowData>> rightBuffer;
+    private transient MiniBatchBuffer leftBuffer;
+    private transient MiniBatchBuffer rightBuffer;
 
     private transient int leftBundleSize = 0;
     private transient int rightBundleSize = 0;
@@ -65,13 +69,23 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
 
         this.coBundleTrigger = parameter.coBundleTrigger;
     }
+    private MiniBatchBuffer initialBuffer(JoinInputSideSpec inputSideSpec){
+        if (inputSideSpec.joinKeyContainsUniqueKey()) {
+            return new MiniBatchBufferJkUk();
+        }
+        if (inputSideSpec.hasUniqueKey()) {
+            return new MiniBatchBufferHasUk();
+        }
+        return new MiniBatchBufferNoUk();
+    }
 
     @Override
     public void open() throws Exception {
         super.open();
 
-        this.leftBuffer = new HashMap<>();
-        this.rightBuffer = new HashMap<>();
+        this.leftBuffer = initialBuffer(leftInputSideSpec);
+        this.rightBuffer = initialBuffer(rightInputSideSpec);
+
         coBundleTrigger.registerCallback(this);
         coBundleTrigger.reset();
         LOG.info("Initialize MiniBatchStreamingJoinOperator successfully.");
@@ -87,21 +101,23 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
     @Override
     public void processElement1(StreamRecord<RowData> input) throws Exception {
         RowData joinKey = (RowData) getCurrentKey();
-        List<RowData> records = leftBuffer.computeIfAbsent(joinKey, k -> new ArrayList<>());
-        records.add(input.getValue());
-
-        leftBundleSize++;
-        coBundleTrigger.onElement1(input.getValue());
+        RowData uniqueKey = null;
+        if (leftInputSideSpec.getUniqueKeySelector() != null) {
+            uniqueKey = leftInputSideSpec.getUniqueKeySelector().getKey(input.getValue());
+        }
+        leftBundleSize = leftBuffer.addRecord(joinKey, uniqueKey, input.getValue());
+        coBundleTrigger.onBufferSize(leftBundleSize + rightBundleSize);
     }
 
     @Override
     public void processElement2(StreamRecord<RowData> input) throws Exception {
         RowData joinKey = (RowData) getCurrentKey();
-        List<RowData> records = rightBuffer.computeIfAbsent(joinKey, k -> new ArrayList<>());
-        records.add(input.getValue());
-
-        rightBundleSize++;
-        coBundleTrigger.onElement2(input.getValue());
+        RowData uniqueKey = null;
+        if (leftInputSideSpec.getUniqueKeySelector() != null) {
+            uniqueKey = leftInputSideSpec.getUniqueKeySelector().getKey(input.getValue());
+        }
+        rightBundleSize = rightBuffer.addRecord(joinKey, uniqueKey, input.getValue());
+        coBundleTrigger.onBufferSize(leftBundleSize + rightBundleSize);
     }
 
     @Override
@@ -146,20 +162,65 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
     }
 
     protected abstract ReduceStats processBundles(
-            Map<RowData, List<RowData>> leftBuffer, Map<RowData, List<RowData>> rightBuffer)
-            throws Exception;
+            MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer) throws Exception;
 
+    /**
+     * RetractMsg+accumulatingMsg would be optimized which would keep sending retractMsg but do not
+     * deal with state.
+     */
     protected int processSingleSideBundles(
-            Map<RowData, List<RowData>> inputBuffer,
+            MiniBatchBuffer inputBuffer,
             JoinRecordStateView inputSideStateView,
             JoinRecordStateView otherSideStateView,
             boolean inputIsLeft)
             throws Exception {
-        for (Map.Entry<RowData, List<RowData>> entry : inputBuffer.entrySet()) {
+        if (inputBuffer instanceof MiniBatchBufferNoUk) {
+            for (Map.Entry<RowData, List<RowData>> entry :
+                    inputBuffer.getRecordsWithJk().entrySet()) {
+                // set state key first
+                setCurrentKey(entry.getKey());
+                for (RowData rowData : entry.getValue()) {
+                    processElement(
+                            rowData, inputSideStateView, otherSideStateView, inputIsLeft, false);
+                }
+            }
+            return 0;
+        }
+        for (Map.Entry<RowData, List<RowData>> entry : inputBuffer.getRecordsWithJk().entrySet()) {
             // set state key first
             setCurrentKey(entry.getKey());
-            for (RowData rowData : entry.getValue()) {
-                processElement(rowData, inputSideStateView, otherSideStateView, inputIsLeft);
+            Iterator<RowData> iter = entry.getValue().iterator();
+            RowData pre = null; // always retractMsg if not null
+            while (iter.hasNext()) {
+                RowData current = iter.next();
+                boolean isPair = false;
+                if (RowDataUtil.isRetractMsg(current) && iter.hasNext()) {
+                    RowData next = iter.next();
+                    if (RowDataUtil.isAccumulateMsg(next)) {
+                        isPair = true;
+                    } else {
+                        // retract + retract
+                        pre = next;
+                    }
+                    processElement(
+                            current, inputSideStateView, otherSideStateView, inputIsLeft, isPair);
+                    if (isPair) {
+                        processElement(
+                                next, inputSideStateView, otherSideStateView, inputIsLeft, isPair);
+                    }
+                } else {
+                    // 1. current is accumulateMsg 2. current is retractMsg and no next row
+                    if (pre != null) {
+                        if (RowDataUtil.isAccumulateMsg(current)) {
+                            isPair = true;
+                        }
+                        processElement(
+                                pre, inputSideStateView, otherSideStateView, inputIsLeft, isPair);
+                        pre = null;
+                    }
+                    processElement(
+                            current, inputSideStateView, otherSideStateView, inputIsLeft, isPair);
+                }
             }
         }
         // retain this reduce size parameter for next step optimization
@@ -254,8 +315,7 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
 
         @Override
         protected ReduceStats processBundles(
-                Map<RowData, List<RowData>> leftBuffer, Map<RowData, List<RowData>> rightBuffer)
-                throws Exception {
+                MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer) throws Exception {
             // process right
             int rightBundleReduceSize =
                     this.processSingleSideBundles(
@@ -278,8 +338,7 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
 
         @Override
         protected ReduceStats processBundles(
-                Map<RowData, List<RowData>> leftBuffer, Map<RowData, List<RowData>> rightBuffer)
-                throws Exception {
+                MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer) throws Exception {
             // more efficient to process right first for left out join, i.e, some retractions can be
             // avoided
             // process right
@@ -304,8 +363,7 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
 
         @Override
         protected ReduceStats processBundles(
-                Map<RowData, List<RowData>> leftBuffer, Map<RowData, List<RowData>> rightBuffer)
-                throws Exception {
+                MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer) throws Exception {
 
             // more efficient to process left first for right out join, i.e, some retractions can be
             // avoided
@@ -332,8 +390,7 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
 
         @Override
         protected ReduceStats processBundles(
-                Map<RowData, List<RowData>> leftBuffer, Map<RowData, List<RowData>> rightBuffer)
-                throws Exception {
+                MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer) throws Exception {
             // process right
             int rightBundleReduceSize =
                     this.processSingleSideBundles(

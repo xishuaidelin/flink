@@ -51,6 +51,16 @@ public interface CoBundleTrigger<IN1, IN2> extends Serializable {
      */
     void onElement2(final IN2 element) throws Exception;
 
+    /**
+     * Called for every element that gets added to the bundle from both left and right input. If the
+     * trigger decides to start evaluate, {@link BundleTriggerCallback#finishBundle()} should be
+     * invoked.
+     *
+     * @param size The size of the bundle when the element arrived from the both left and right
+     *     input.
+     */
+    void onBufferSize(final long size) throws Exception;
+
     /** Reset the trigger to its initiate status. */
     void reset();
 
