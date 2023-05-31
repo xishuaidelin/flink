@@ -16,20 +16,16 @@
  * limitations under the License.
  */
 
-package org.apache.flink.table.runtime.operators.join.stream.BatchBuffer;
+package org.apache.flink.table.runtime.operators.join.stream.batchbuffer;
 
 import org.apache.flink.table.data.RowData;
+
+import javax.annotation.Nullable;
 
 import java.util.List;
 import java.util.Map;
 
-// here create a new class to represent the buffer with three cases
-// 1. JoinKeyContainsUniqueKey 2.InputSideHasUniqueKey 3.InputSideHasNoUniqueKey
-
-// 1. buffer ->  Map<JoinKey, Input>
-// 2. buffer ->  Map<JoinKey, Map<UniqueKey,Input>>
-// 3. buffer ->  Map<JoinKey, Input>
-
+/** MiniBatchBuffer interface to buffer the records used in MiniBatchStreamingJoinOperator. */
 public interface MiniBatchBuffer {
     public boolean isEmpty();
 
@@ -37,11 +33,11 @@ public interface MiniBatchBuffer {
 
     public int size();
 
-    /** return the size of the buffer now */
-    public int addRecord(RowData Jk, RowData Uk, RowData record) throws Exception;
+    /** return the size of the buffer now. */
+    public int addRecord(RowData jk, @Nullable RowData uk, RowData record) throws Exception;
 
-    public List<RowData> getListRecord(RowData Jk, RowData Uk);
+    public List<RowData> getListRecord(RowData jk, @Nullable RowData uk);
 
-    /** return the Map<RowData(joinKey),List<RowData>> */
+    /** return the Map(RowData(joinKey),List(RowData)). */
     public Map<RowData, List<RowData>> getMapRecords();
 }

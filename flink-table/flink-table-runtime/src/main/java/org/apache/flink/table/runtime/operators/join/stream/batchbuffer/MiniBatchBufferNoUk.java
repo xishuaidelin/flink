@@ -16,9 +16,10 @@
  * limitations under the License.
  */
 
-package org.apache.flink.table.runtime.operators.join.stream.BatchBuffer;
+package org.apache.flink.table.runtime.operators.join.stream.batchbuffer;
 
 import org.apache.flink.table.data.RowData;
+import org.apache.flink.table.data.util.RowDataUtil;
 import org.apache.flink.types.RowKind;
 
 import java.util.ArrayList;
@@ -26,6 +27,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
+/** for the case that records have no uniqueKey. */
 public class MiniBatchBufferNoUk implements MiniBatchBuffer {
     /**
      * Are there at most two input records that the key is equivalent ? Table could have multiple
@@ -39,9 +41,9 @@ public class MiniBatchBufferNoUk implements MiniBatchBuffer {
     private transient int count;
 
     /**
-     * map< Jk, map<FieldsHash,List<pos>>> FieldsHash : the hash of fields of input except the
-     * RowKind. List<pos> : input corresponding position in the bundle valueList. cause there maybe
-     * repetitive rows
+     * map(Jk, map(FieldsHash,List(po))) FieldsHash : the hash of fields of input except the
+     * RowKind. List[pos]pos : input corresponding position in the bundle valueList. cause there
+     * maybe repetitive rows.
      */
     private transient Map<RowData, Map<Integer, List<Integer>>> dic;
 
@@ -65,30 +67,30 @@ public class MiniBatchBufferNoUk implements MiniBatchBuffer {
         return count;
     }
 
-    private boolean isContainNoJoinKey(RowData Jk) {
-        return !bundle.containsKey(Jk);
+    private boolean isContainNoJoinKey(RowData jk) {
+        return !bundle.containsKey(jk);
     }
 
-    private boolean isContainNoHashKey(RowData Jk, Integer Hk) {
-        return !dic.get(Jk).containsKey(Hk);
+    private boolean isContainNoHashKey(RowData jk, Integer hk) {
+        return !dic.get(jk).containsKey(hk);
     }
 
-    private void addJoinKey(RowData Jk) {
-        List<RowData> Val = new ArrayList<>();
-        bundle.put(Jk, Val);
+    private void addJoinKey(RowData jk) {
+        List<RowData> val = new ArrayList<>();
+        bundle.put(jk, val);
         Map<Integer, List<Integer>> mp = new HashMap<>();
-        dic.put(Jk, mp);
+        dic.put(jk, mp);
     }
 
-    private void addHashKey(RowData Jk, Integer Hk) {
-        List<Integer> dic_Val = new ArrayList<>();
-        dic.get(Jk).put(Hk, dic_Val);
+    private void addHashKey(RowData jk, Integer hk) {
+        List<Integer> dicVal = new ArrayList<>();
+        dic.get(jk).put(hk, dicVal);
     }
 
     /**
      * Fold the records only in accumulate and retract modes. The rule: the input is accumulateMsg
-     * -> add to bundle the input is retractMsg -> remove the accumulateMsg with the same HashKey
-     * from bundle
+     * -> check if there is retractMsg before yes fold that or no add to the bundle. the input is
+     * retractMsg -> remove the accumulateMsg in the same HashKey from bundle
      *
      * <p>The same HashKey means that the input's field values are completely equivalent.
      *
@@ -96,64 +98,56 @@ public class MiniBatchBufferNoUk implements MiniBatchBuffer {
      * RowKind#UPDATE_AFTER}, accumulateMsg refers to -U/-D which refers to {@link
      * RowKind#UPDATE_BEFORE}/{@link RowKind#DELETE}.
      */
-    private void foldRecord(RowData Jk, RowKind type, int HashKey, RowData record) {
-        switch (type) {
-                // accumulateMsg
-            case INSERT:
-            case UPDATE_AFTER:
-                bundle.get(Jk).add(record);
-                count++;
-                int add_pos = bundle.get(Jk).size() - 1;
-                dic.get(Jk).get(HashKey).add(add_pos);
-                break;
-                // retractMsg
-            case UPDATE_BEFORE:
-            case DELETE:
-                int size = dic.get(Jk).get(HashKey).size();
-                int pos = dic.get(Jk).get(HashKey).get(size - 1);
-                dic.get(Jk).get(HashKey).remove(size - 1);
-                bundle.get(Jk).remove(pos);
+    private void foldRecord(RowData jk, RowKind type, int hashKey, RowData record) {
+        int size = dic.get(jk).get(hashKey).size(),addPos;
+        if(size>0){
+            int pos = dic.get(jk).get(hashKey).get(size - 1);
+            if((RowDataUtil.isAccumulateMsg(record) && RowDataUtil.isRetractMsg(bundle.get(jk).get(pos)))
+                || (RowDataUtil.isRetractMsg(record) && RowDataUtil.isAccumulateMsg(bundle.get(jk).get(pos)))){
+                dic.get(jk).get(hashKey).remove(size - 1);
+                bundle.get(jk).remove(pos);
                 count--;
-                break;
+                return;
+            }
         }
+        bundle.get(jk).add(record);
+        count++;
+        addPos = bundle.get(jk).size() - 1;
+        dic.get(jk).get(hashKey).add(addPos);
     }
-    /** Returns false if there is no accumulateMsg before retractMsg in the same HashKey. */
-    private boolean checkInvalid(RowData Jk, RowKind type, int HashKey) {
-        if (type == RowKind.DELETE || type == RowKind.UPDATE_BEFORE) {
-            if (isContainNoJoinKey(Jk)) {
-                return false;
-            }
-            if (isContainNoHashKey(Jk, HashKey) || dic.get(Jk).get(HashKey).isEmpty()) {
-                // no accumulateMsg before the record
-                return false;
-            }
-        }
+
+    /**
+     * Returns false if there is no accumulateMsg before retractMsg in the same HashKey. this should
+     * be tolerated cause the accumulateMsg could be in last miniBatch.
+     */
+    private boolean checkInvalid() {
         return true;
     }
 
-    /** here the Uk is null */
+    /** here the uk is null. */
     @Override
-    public int addRecord(RowData Jk, RowData Uk, RowData record) throws Exception {
+    public int addRecord(RowData jk, RowData uk, RowData record) throws Exception {
+        if (isContainNoJoinKey(jk)) {
+            addJoinKey(jk);
+        }
         RowKind type = record.getRowKind();
         record.setRowKind(RowKind.INSERT);
-        int HashKey = record.hashCode();
-        if (checkInvalid(Jk, type, HashKey)) {
-            if (isContainNoJoinKey(Jk)) {
-                addJoinKey(Jk);
-            }
-            if (isContainNoHashKey(Jk, HashKey)) {
-                addHashKey(Jk, HashKey);
-            }
-            foldRecord(Jk, type, HashKey, record);
-            return count;
-        } else {
-            throw new RuntimeException("MiniBatch join err in MiniBatchBufferNoUk");
+        int hashKey = record.hashCode();
+        if (isContainNoHashKey(jk, hashKey)) {
+            addHashKey(jk, hashKey);
         }
+        if (checkInvalid()) {
+            record.setRowKind(type);
+            foldRecord(jk, type, hashKey, record);
+        } else {
+            throw new RuntimeException("MiniBatch join invalid record in MiniBatchBufferNoUk");
+        }
+        return count;
     }
 
     @Override
-    public List<RowData> getListRecord(RowData Jk, RowData Uk) {
-        return bundle.get(Jk);
+    public List<RowData> getListRecord(RowData jk, RowData uk) {
+        return bundle.get(jk);
     }
 
     @Override
