@@ -103,18 +103,22 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
     @Override
     public void processElement1(StreamRecord<RowData> input) throws Exception {
         RowData joinKey = (RowData) getCurrentKey();
-        RowData uniqueKey = leftInputSideSpec.getUniqueKeySelector().getKey(input.getValue());
+        RowData uniqueKey = null;
+        if (leftInputSideSpec.getUniqueKeySelector() != null) {
+            uniqueKey = leftInputSideSpec.getUniqueKeySelector().getKey(input.getValue());
+        }
         leftBundleSize = leftBuffer.addRecord(joinKey, uniqueKey, input.getValue());
-
         coBundleTrigger.onBufferSize(leftBundleSize + rightBundleSize);
     }
 
     @Override
     public void processElement2(StreamRecord<RowData> input) throws Exception {
         RowData joinKey = (RowData) getCurrentKey();
-        RowData uniqueKey = rightInputSideSpec.getUniqueKeySelector().getKey(input.getValue());
+        RowData uniqueKey = null;
+        if (leftInputSideSpec.getUniqueKeySelector() != null) {
+            uniqueKey = leftInputSideSpec.getUniqueKeySelector().getKey(input.getValue());
+        }
         rightBundleSize = rightBuffer.addRecord(joinKey, uniqueKey, input.getValue());
-
         coBundleTrigger.onBufferSize(leftBundleSize + rightBundleSize);
     }
 
@@ -159,8 +163,8 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
         coBundleTrigger.reset();
     }
 
-    protected abstract ReduceStats processBundles(
-            MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer) throws Exception;
+    protected abstract void processBundles(MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer)
+            throws Exception;
 
     protected int processSingleSideBundles(
             MiniBatchBuffer inputBuffer,
@@ -261,8 +265,8 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
         }
 
         @Override
-        protected ReduceStats processBundles(
-                MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer) throws Exception {
+        protected void processBundles(MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer)
+                throws Exception {
             // process right
             int rightBundleReduceSize =
                     this.processSingleSideBundles(
@@ -271,7 +275,7 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
             int leftBundleReduceSize =
                     this.processSingleSideBundles(
                             leftBuffer, leftRecordStateView, rightRecordStateView, true);
-            return ReduceStats.of(leftBundleReduceSize, rightBundleReduceSize);
+            //            return ReduceStats.of(leftBundleReduceSize, rightBundleReduceSize);
         }
     }
 
@@ -284,8 +288,8 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
         }
 
         @Override
-        protected ReduceStats processBundles(
-                MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer) throws Exception {
+        protected void processBundles(MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer)
+                throws Exception {
             // more efficient to process right first for left out join, i.e, some retractions can be
             // avoided
             // process right
@@ -296,7 +300,7 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
             int leftBundleReduceSize =
                     this.processSingleSideBundles(
                             leftBuffer, leftRecordStateView, rightRecordStateView, true);
-            return ReduceStats.of(leftBundleReduceSize, rightBundleReduceSize);
+            //            return ReduceStats.of(leftBundleReduceSize, rightBundleReduceSize);
         }
     }
 
@@ -309,8 +313,8 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
         }
 
         @Override
-        protected ReduceStats processBundles(
-                MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer) throws Exception {
+        protected void processBundles(MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer)
+                throws Exception {
 
             // more efficient to process left first for right out join, i.e, some retractions can be
             // avoided
@@ -323,7 +327,7 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
             int rightBundleReduceSize =
                     this.processSingleSideBundles(
                             rightBuffer, rightRecordStateView, leftRecordStateView, false);
-            return ReduceStats.of(leftBundleReduceSize, rightBundleReduceSize);
+            //            return ReduceStats.of(leftBundleReduceSize, rightBundleReduceSize);
         }
     }
 
@@ -336,8 +340,8 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
         }
 
         @Override
-        protected ReduceStats processBundles(
-                MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer) throws Exception {
+        protected void processBundles(MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer)
+                throws Exception {
             // process right
             int rightBundleReduceSize =
                     this.processSingleSideBundles(
@@ -346,7 +350,7 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
             int leftBundleReduceSize =
                     this.processSingleSideBundles(
                             leftBuffer, leftRecordStateView, rightRecordStateView, true);
-            return ReduceStats.of(leftBundleReduceSize, rightBundleReduceSize);
+            //            return ReduceStats.of(leftBundleReduceSize, rightBundleReduceSize);
         }
     }
 

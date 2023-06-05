@@ -297,28 +297,49 @@ public class BatchBufferTest extends BatchBufferTestBase {
                         //    others are equivalent and nonequivalent.
                         insertRecord("Ord#1", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"),
                         insertRecord("Ord#1", "LineOrd#2", "4 Bellevue Drive, Pottstown, PB 19464"),
-                        insertRecord("Ord#1", "LineOrd#2", "4 Bellevue Drive, Pottstown, PB 19464"), // xx
+                        insertRecord(
+                                "Ord#1",
+                                "LineOrd#2",
+                                "4 Bellevue Drive, Pottstown, PB 19464"), // xx
                         deleteRecord( // this -D shouldn't be folded
                                 "Ord#6", "LineOrd#6", "8 Bellevue Drive, Pottstown, PF 19464"),
                         insertRecord("Ord#3", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"),
-                        insertRecord("Ord#3", "LineOrd#3", "5 Bellevue Drive, Pottstown, PD 19464"), // x
+                        insertRecord(
+                                "Ord#3", "LineOrd#3", "5 Bellevue Drive, Pottstown, PD 19464"), // x
                         updateBeforeRecord(
                                 "Ord#3", "LineOrd#3", "5 Bellevue Drive, Pottstown, PD 19464"), // x
                         updateBeforeRecord( // this -U shouldn't be folded
-                                "Ord#9", "LineOrd#9", "11 Bellevue Drive, Pottstown, PI 19464"), // y
+                                "Ord#9",
+                                "LineOrd#9",
+                                "11 Bellevue Drive, Pottstown, PI 19464"), // y
                         updateBeforeRecord(
-                                "Ord#9", "LineOrd#9", "11 Bellevue Drive, Pottstown, PI 19464"),  // y
+                                "Ord#9",
+                                "LineOrd#9",
+                                "11 Bellevue Drive, Pottstown, PI 19464"), // y
                         updateAfterRecord(
                                 "Ord#10", "LineOrd#10", "14 Bellevue Drive, Pottstown, PJ 19464"),
                         updateAfterRecord(
                                 "Ord#18", "LineOrd#18", "22 Bellevue Drive, Pottstown, PK 19464"),
-                        deleteRecord("Ord#1", "LineOrd#2", "4 Bellevue Drive, Pottstown, PB 19464"), // xx
+                        deleteRecord(
+                                "Ord#1",
+                                "LineOrd#2",
+                                "4 Bellevue Drive, Pottstown, PB 19464"), // xx
                         updateAfterRecord( // this -U shouldn't be folded
-                                "Ord#9", "LineOrd#9", "11 Bellevue Drive, Pottstown, PI 19464"),  // y
-                        deleteRecord("Ord#6", "LineOrd#6", "8 Bellevue Drive, Pottstown, PF 19464"), // yy
-                        insertRecord("Ord#6", "LineOrd#6", "8 Bellevue Drive, Pottstown, PF 19464"), // yy
+                                "Ord#9",
+                                "LineOrd#9",
+                                "11 Bellevue Drive, Pottstown, PI 19464"), // y
+                        deleteRecord(
+                                "Ord#6",
+                                "LineOrd#6",
+                                "8 Bellevue Drive, Pottstown, PF 19464"), // yy
+                        insertRecord(
+                                "Ord#6",
+                                "LineOrd#6",
+                                "8 Bellevue Drive, Pottstown, PF 19464"), // yy
                         updateBeforeRecord( // this -U shouldn't be folded
-                                "Ord#9", "LineOrd#9", "11 Bellevue Drive, Pottstown, PI 19464"))); // y
+                                "Ord#9",
+                                "LineOrd#9",
+                                "11 Bellevue Drive, Pottstown, PI 19464"))); // y
 
         List<StreamRecord<RowData>> result =
                 Arrays.asList(
@@ -328,7 +349,9 @@ public class BatchBufferTest extends BatchBufferTestBase {
                                 "Ord#6", "LineOrd#6", "8 Bellevue Drive, Pottstown, PF 19464"),
                         insertRecord("Ord#3", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"),
                         updateBeforeRecord( // this -U shouldn't be folded
-                                "Ord#9", "LineOrd#9", "11 Bellevue Drive, Pottstown, PI 19464"), // y
+                                "Ord#9",
+                                "LineOrd#9",
+                                "11 Bellevue Drive, Pottstown, PI 19464"), // y
                         updateAfterRecord(
                                 "Ord#10", "LineOrd#10", "14 Bellevue Drive, Pottstown, PJ 19464"),
                         updateAfterRecord(

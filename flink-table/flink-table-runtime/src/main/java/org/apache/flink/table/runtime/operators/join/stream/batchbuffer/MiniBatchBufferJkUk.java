@@ -41,7 +41,7 @@ public class MiniBatchBufferJkUk implements MiniBatchBuffer {
     }
 
     public boolean isEmpty() {
-        return true;
+        return count == 0;
     }
 
     public void clear() {
@@ -75,15 +75,20 @@ public class MiniBatchBufferJkUk implements MiniBatchBuffer {
                 }
                 bundle.get(jk).remove(pre);
                 count--;
+                if (bundle.get(jk).isEmpty()) {
+                    bundle.remove(jk);
+                }
                 return;
+                // cannot fold retract+accumulate order Msgs
             case UPDATE_BEFORE:
             case DELETE:
                 break;
         }
-        throw new TableException(
-                String.format(
-                        "MiniBatch join invalid remaining record in buffer which is %s",
-                        bundle.get(jk).get(pre)));
+        // the retractMsg could be the start of a new mini-batch
+        //        throw new TableException(
+        //                String.format(
+        //                        "MiniBatch join invalid remaining record in buffer which is %s",
+        //                        bundle.get(jk).get(pre)));
     }
 
     /**

@@ -99,14 +99,20 @@ public class MiniBatchBufferNoUk implements MiniBatchBuffer {
      * RowKind#UPDATE_BEFORE}/{@link RowKind#DELETE}.
      */
     private void foldRecord(RowData jk, RowKind type, int hashKey, RowData record) {
-        int size = dic.get(jk).get(hashKey).size(),addPos;
-        if(size>0){
+        int size = dic.get(jk).get(hashKey).size(), addPos;
+        if (size > 0) {
             int pos = dic.get(jk).get(hashKey).get(size - 1);
-            if((RowDataUtil.isAccumulateMsg(record) && RowDataUtil.isRetractMsg(bundle.get(jk).get(pos)))
-                || (RowDataUtil.isRetractMsg(record) && RowDataUtil.isAccumulateMsg(bundle.get(jk).get(pos)))){
+            if ((RowDataUtil.isAccumulateMsg(record)
+                            && RowDataUtil.isRetractMsg(bundle.get(jk).get(pos)))
+                    || (RowDataUtil.isRetractMsg(record)
+                            && RowDataUtil.isAccumulateMsg(bundle.get(jk).get(pos)))) {
                 dic.get(jk).get(hashKey).remove(size - 1);
                 bundle.get(jk).remove(pos);
                 count--;
+                if(bundle.get(jk).isEmpty()){
+                    bundle.remove(jk);
+                    dic.remove(jk);
+                }
                 return;
             }
         }
