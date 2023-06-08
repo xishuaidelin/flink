@@ -30,27 +30,6 @@ import static org.apache.flink.configuration.ConfigOptions.key;
  */
 @Experimental
 public class ExperimentalExecutionConfigOptions {
-
-    public static final ConfigOption<Integer> TABLE_EXEC_RANGE_SORT_SAMPLE_SIZE =
-            key("table.exec.range-sort.sample-size")
-                    .intType()
-                    .defaultValue(655360)
-                    .withDescription(
-                            "Number of sampled record in order to determine the range boundaries.");
-
-    public static final ConfigOption<Integer> TABLE_EXEC_RANGE_SORT_MAX_NUM =
-            key("table.exec.range-sort.max-num")
-                    .intType()
-                    .defaultValue(65536)
-                    .withDescription(
-                            "The range number in histogram, this value must bigger than parallelism.");
-
-    public static final ConfigOption<Long> TABLE_EXEC_TOPN_FAST_STATE_THRESHOLD =
-            key("table.exec.topn.fast-state-threshold")
-                    .longType()
-                    .defaultValue(20L)
-                    .withDescription(
-                            "The state used for TopN operator can be optimized if `N` is less than this threshold.");
     public static final ConfigOption<Boolean> TABLE_EXEC_STREAM_JOIN_LESS_RECORDS_PER_KEY =
             key("table.exec.stream.join.less-records-per-key")
                     .booleanType()

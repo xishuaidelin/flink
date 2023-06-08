@@ -92,31 +92,24 @@ public class MiniBatchBufferJkUk implements MiniBatchBuffer {
     }
 
     /**
-     * Returns false if the last and record are +I +I, +U +I, -U -U/-D // -U +I is reasonable. //
-     * cause the -U means modifying the Uk and +I means the record inserting into with the same Uk
-     * -D -U/-D which +I refers to {@link RowKind#INSERT}, +U refers to {@link
-     * RowKind#UPDATE_AFTER}, -U refers to {@link RowKind#UPDATE_BEFORE}, -D refers to {@link
-     * RowKind#DELETE}.
+     * Returns false(Invalid) if the last and current record are +I +I, +U +I, -U/-D -U/-D. -U +I is
+     * reasonable cause the -U means modifying the Uk and +I means new record inserting into with
+     * the same Uk. +I refers to {@link RowKind#INSERT}, +U refers to {@link RowKind#UPDATE_AFTER},
+     * -U refers to {@link RowKind#UPDATE_BEFORE}, -D refers to {@link RowKind#DELETE}.
      */
     private boolean checkInvalid(RowData last, RowData record) {
+        // first one of the batch could be a record with any type
         if (last == null) {
-            return !RowDataUtil.isRetractMsg(record);
+            return true;
         } else {
-            switch (last.getRowKind()) {
-                case INSERT:
-                case UPDATE_AFTER:
-                    if (RowDataUtil.isInsertMsg(record)) {
-                        return false;
-                    }
-                    return true;
-                case UPDATE_BEFORE:
-                case DELETE:
-                    break;
+            if (RowDataUtil.isAccumulateMsg(last)) {
+                // +I/+U +I is invalid
+                return !RowDataUtil.isInsertMsg(record);
+            } else {
+                // -U/-D -U/-D is invalid
+                return !RowDataUtil.isRetractMsg(record);
             }
         }
-        throw new TableException(
-                String.format(
-                        "MiniBatch join invalid remaining record in buffer which is %s", last));
     }
 
     private boolean isContainNoJoinKey(RowData jk) {
@@ -162,5 +155,13 @@ public class MiniBatchBufferJkUk implements MiniBatchBuffer {
     @Override
     public Map<RowData, List<RowData>> getMapRecords() {
         return bundle;
+    }
+
+    /**
+     * fold the records.
+     */
+    @Override
+    public void compressRecords() {
+
     }
 }

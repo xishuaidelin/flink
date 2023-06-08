@@ -88,9 +88,10 @@ public class MiniBatchBufferNoUk implements MiniBatchBuffer {
     }
 
     /**
-     * Fold the records only in accumulate and retract modes. The rule: the input is accumulateMsg
-     * -> check if there is retractMsg before yes fold that or no add to the bundle. the input is
-     * retractMsg -> remove the accumulateMsg in the same HashKey from bundle
+     * Fold the records only in accumulate and retract modes.
+     * The rule:
+     * the input is accumulateMsg -> check if there is retractMsg before if yes tnen fold that else add input to the bundle.
+     * the input is retractMsg -> remove the accumulateMsg in the same HashKey from bundle.
      *
      * <p>The same HashKey means that the input's field values are completely equivalent.
      *
@@ -109,7 +110,7 @@ public class MiniBatchBufferNoUk implements MiniBatchBuffer {
                 dic.get(jk).get(hashKey).remove(size - 1);
                 bundle.get(jk).remove(pos);
                 count--;
-                if(bundle.get(jk).isEmpty()){
+                if (bundle.get(jk).isEmpty()) {
                     bundle.remove(jk);
                     dic.remove(jk);
                 }
@@ -159,5 +160,13 @@ public class MiniBatchBufferNoUk implements MiniBatchBuffer {
     @Override
     public Map<RowData, List<RowData>> getMapRecords() {
         return bundle;
+    }
+
+    /**
+     * fold the records.
+     */
+    @Override
+    public void compressRecords() {
+
     }
 }

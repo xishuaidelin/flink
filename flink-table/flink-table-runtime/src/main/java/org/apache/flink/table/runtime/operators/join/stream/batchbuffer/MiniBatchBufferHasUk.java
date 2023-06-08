@@ -96,7 +96,7 @@ public class MiniBatchBufferHasUk implements MiniBatchBuffer {
      * RowKind#INSERT}, +U refers to {@link RowKind#UPDATE_AFTER}, -U refers to {@link
      * RowKind#UPDATE_BEFORE}, -D refers to {@link RowKind#DELETE}.
      */
-    private void FoldRecord(RowData uk) {
+    private void foldRecord(RowData uk) {
         int size = bundle.get(uk).size();
         if (size < 2) {
             return;
@@ -164,7 +164,7 @@ public class MiniBatchBufferHasUk implements MiniBatchBuffer {
             bundle.get(uk).add(record);
             uKey2jKey.get(uk).add(jk);
             count++;
-            FoldRecord(uk);
+            foldRecord(uk);
         } else {
             throw new TableException("MiniBatch join invalid record in MiniBatchBufferHasUk");
         }
@@ -192,5 +192,13 @@ public class MiniBatchBufferHasUk implements MiniBatchBuffer {
             }
         }
         return result;
+    }
+
+    /**
+     * fold the records.
+     */
+    @Override
+    public void compressRecords() {
+
     }
 }

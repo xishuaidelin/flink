@@ -40,7 +40,7 @@ import java.util.function.Function;
 
 /** This class would offer the base for testing of JoinKeyContainsUk / InputHasUk / InputHasNoUk. */
 public abstract class StreamingMiniBatchJoinOperatorTestbase {
-    protected static final InternalTypeInfo<RowData> leftTypeInfo =
+    protected static final InternalTypeInfo<RowData> LEFT_TYPE_INFO =
             InternalTypeInfo.of(
                     RowType.of(
                             new LogicalType[] {
@@ -50,7 +50,7 @@ public abstract class StreamingMiniBatchJoinOperatorTestbase {
                             },
                             new String[] {"order_id", "line_order_id", "shipping_address"}));
 
-    protected static final InternalTypeInfo<RowData> rightTypeInfo =
+    protected static final InternalTypeInfo<RowData> RIGHT_TYPE_INFO =
             InternalTypeInfo.of(
                     RowType.of(
                             new LogicalType[] {
@@ -63,7 +63,7 @@ public abstract class StreamingMiniBatchJoinOperatorTestbase {
     protected static RowDataKeySelector joinKeySelector =
             HandwrittenSelectorUtil.getRowDataSelector(
                     new int[] {1},
-                    leftTypeInfo.toRowType().getChildren().toArray(new LogicalType[0]));
+                    LEFT_TYPE_INFO.toRowType().getChildren().toArray(new LogicalType[0]));
 
     protected JoinInputSideSpec leftInputSpec;
 
@@ -114,32 +114,42 @@ public abstract class StreamingMiniBatchJoinOperatorTestbase {
         testHarness.close();
     }
 
-    protected static final Function<String, RowDataKeySelector[]> UniqueKeySelector_EXTRACTOR =
+    protected static final Function<String, RowDataKeySelector[]> UK_SELECTOR_EXTRACTOR =
             (testDisplayName) -> {
                 if (testDisplayName.contains("JkUk")) {
                     return new RowDataKeySelector[] {
                         HandwrittenSelectorUtil.getRowDataSelector(
                                 new int[] {1},
-                                leftTypeInfo.toRowType().getChildren().toArray(new LogicalType[0])),
+                                LEFT_TYPE_INFO
+                                        .toRowType()
+                                        .getChildren()
+                                        .toArray(new LogicalType[0])),
                         HandwrittenSelectorUtil.getRowDataSelector(
                                 new int[] {1},
-                                rightTypeInfo.toRowType().getChildren().toArray(new LogicalType[0]))
+                                RIGHT_TYPE_INFO
+                                        .toRowType()
+                                        .getChildren()
+                                        .toArray(new LogicalType[0]))
                     };
                 } else if (testDisplayName.contains("HasUk")) {
                     return new RowDataKeySelector[] {
                         HandwrittenSelectorUtil.getRowDataSelector(
                                 new int[] {0},
-                                leftTypeInfo.toRowType().getChildren().toArray(new LogicalType[0])),
+                                LEFT_TYPE_INFO
+                                        .toRowType()
+                                        .getChildren()
+                                        .toArray(new LogicalType[0])),
                         HandwrittenSelectorUtil.getRowDataSelector(
                                 new int[] {0},
-                                rightTypeInfo.toRowType().getChildren().toArray(new LogicalType[0]))
+                                RIGHT_TYPE_INFO
+                                        .toRowType()
+                                        .getChildren()
+                                        .toArray(new LogicalType[0]))
                     };
                 } else {
                     return new RowDataKeySelector[] {null, null};
                 }
             };
-
-
 
     protected static final Function<Set<String>, Integer> MINIBATCH_SIZE_EXTRACTOR =
             (tags) -> {

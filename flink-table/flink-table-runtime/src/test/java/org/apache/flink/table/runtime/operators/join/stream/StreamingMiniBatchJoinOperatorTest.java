@@ -32,7 +32,6 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
 
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
@@ -44,6 +43,7 @@ import static org.apache.flink.table.runtime.util.StreamRecordUtils.rowOfKind;
 import static org.apache.flink.table.runtime.util.StreamRecordUtils.updateAfterRecord;
 import static org.apache.flink.table.runtime.util.StreamRecordUtils.updateBeforeRecord;
 
+/** Operator test. */
 public final class StreamingMiniBatchJoinOperatorTest
         extends StreamingMiniBatchJoinOperatorTestbase {
 
@@ -52,10 +52,9 @@ public final class StreamingMiniBatchJoinOperatorTest
 
     @Override
     protected MiniBatchStreamingJoinOperator createJoinOperator(TestInfo testInfo) {
-        RowDataKeySelector[] KeySelectors_ =
-                UniqueKeySelector_EXTRACTOR.apply(testInfo.getDisplayName());
-        leftUniqueKeySelector = KeySelectors_[0];
-        rightUniqueKeySelector = KeySelectors_[1];
+        RowDataKeySelector[] keySelectors0 = UK_SELECTOR_EXTRACTOR.apply(testInfo.getDisplayName());
+        leftUniqueKeySelector = keySelectors0[0];
+        rightUniqueKeySelector = keySelectors0[1];
         JoinInputSideSpec[] inputSideSpecs = INPUT_SPEC_EXTRACTOR.apply(testInfo.getDisplayName());
         Boolean[] isOuter = JOIN_TYPE_EXTRACTOR.apply(testInfo.getDisplayName());
         FlinkJoinType joinType = FLINK_JOIN_TYPE_EXTRACTOR.apply(testInfo.getDisplayName());
@@ -64,8 +63,8 @@ public final class StreamingMiniBatchJoinOperatorTest
 
         return MiniBatchStreamingJoinOperator.newMiniBatchStreamJoinOperator(
                 joinType,
-                leftTypeInfo,
-                rightTypeInfo,
+                LEFT_TYPE_INFO,
+                RIGHT_TYPE_INFO,
                 joinCondition,
                 inputSideSpecs[0],
                 inputSideSpecs[1],
@@ -80,12 +79,12 @@ public final class StreamingMiniBatchJoinOperatorTest
     protected RowType getOutputType() {
         return RowType.of(
                 Stream.concat(
-                                leftTypeInfo.toRowType().getChildren().stream(),
-                                rightTypeInfo.toRowType().getChildren().stream())
+                                LEFT_TYPE_INFO.toRowType().getChildren().stream(),
+                                RIGHT_TYPE_INFO.toRowType().getChildren().stream())
                         .toArray(LogicalType[]::new),
                 Stream.concat(
-                                leftTypeInfo.toRowType().getFieldNames().stream(),
-                                rightTypeInfo.toRowType().getFieldNames().stream())
+                                LEFT_TYPE_INFO.toRowType().getFieldNames().stream(),
+                                RIGHT_TYPE_INFO.toRowType().getFieldNames().stream())
                         .toArray(String[]::new));
     }
 
@@ -234,62 +233,60 @@ public final class StreamingMiniBatchJoinOperatorTest
                         "6 Bellevue Drive, Pottstown, PD 19464",
                         "Ord#Y",
                         "LineOrd#4",
-                        "TRUCK")
-
-        );
+                        "TRUCK"));
     }
 
     @Tag("miniBatchSize=10")
     @Test
     public void testInnerJoinWithHasUk() throws Exception {
-        List<StreamRecord<RowData>> records = Arrays.asList(
-                insertRecord("Ord#1", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"),
-                insertRecord("Ord#2", "LineOrd#2", "4 Bellevue Drive, Pottstown, PB 19464"),
-                insertRecord("Ord#3", "LineOrd#3", "5 Bellevue Drive, Pottstown, PC 19464"),
-                insertRecord("Ord#4", "LineOrd#4", "6 Bellevue Drive, Pottstown, PD 19464"),
-                // size = 4
-                updateAfterRecord(
-                        "Ord#3", "LineOrd#10", "xxx Bellevue Drive, Pottstown, PJ 19464"),
-                // size = 4
-                insertRecord("Ord#5", "LineOrd#5", "7 Bellevue Drive, Pottstown, PE 19464"),
-                // size = 5
-                insertRecord("Ord#6", "LineOrd#6", "8 Bellevue Drive, Pottstown, PF 19464"),
-                // size = 6
-                updateAfterRecord(
-                        "Ord#2", "LineOrd#2", "14 Bellevue Drive, Pottstown, PJ 19464"),
-                // size = 6
-                updateBeforeRecord(
-                        "Ord#1", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"),
-                // size = 5
-                deleteRecord(
-                        "Ord#6", "LineOrd#5", "7 Bellevue Drive, Pottstown, PE 19464"),
-                // size = 4
-                updateAfterRecord(
-                        "Ord#6", "LineOrd#6", "8 Bellevue Drive, Pottstown, PF 19464"),
-                // size = 5
-                updateBeforeRecord(
-                        "Ord#12", "LineOrd#4", "6 Bellevue Drive, Pottstown, PD 19464"),
-                // size = 6
-                updateAfterRecord(
-                        "Ord#xxxx",
-                        "LineOrd#10",
-                        "yyy Bellevue Drive, Pottstown, PJ 19464"),
-                // size = 7
-                deleteRecord(
-                        "Ord#9", "LineOrd#3", "5 Bellevue Drive, Pottstown, PC 19464")
-                // size = 8
-        );
-        for(StreamRecord<RowData> row : records){
+        List<StreamRecord<RowData>> records =
+                Arrays.asList(
+                        insertRecord("Ord#1", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"),
+                        insertRecord("Ord#2", "LineOrd#2", "4 Bellevue Drive, Pottstown, PB 19464"),
+                        insertRecord("Ord#3", "LineOrd#3", "5 Bellevue Drive, Pottstown, PC 19464"),
+                        insertRecord("Ord#4", "LineOrd#4", "6 Bellevue Drive, Pottstown, PD 19464"),
+                        // size = 4
+                        updateAfterRecord(
+                                "Ord#3", "LineOrd#10", "xxx Bellevue Drive, Pottstown, PJ 19464"),
+                        // size = 4
+                        insertRecord("Ord#5", "LineOrd#5", "7 Bellevue Drive, Pottstown, PE 19464"),
+                        // size = 5
+                        insertRecord("Ord#6", "LineOrd#6", "8 Bellevue Drive, Pottstown, PF 19464"),
+                        // size = 6
+                        updateAfterRecord(
+                                "Ord#2", "LineOrd#2", "14 Bellevue Drive, Pottstown, PJ 19464"),
+                        // size = 6
+                        updateBeforeRecord(
+                                "Ord#1", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"),
+                        // size = 5
+                        deleteRecord("Ord#6", "LineOrd#5", "7 Bellevue Drive, Pottstown, PE 19464"),
+                        // size = 4
+                        updateAfterRecord(
+                                "Ord#6", "LineOrd#6", "8 Bellevue Drive, Pottstown, PF 19464"),
+                        // size = 5
+                        updateBeforeRecord(
+                                "Ord#12", "LineOrd#4", "6 Bellevue Drive, Pottstown, PD 19464"),
+                        // size = 6
+                        updateAfterRecord(
+                                "Ord#xxxx",
+                                "LineOrd#10",
+                                "yyy Bellevue Drive, Pottstown, PJ 19464"),
+                        // size = 7
+                        deleteRecord("Ord#9", "LineOrd#3", "5 Bellevue Drive, Pottstown, PC 19464")
+                        // size = 8
+                        );
+        for (StreamRecord<RowData> row : records) {
             testHarness.processElement1(row);
         }
         assertor.shouldEmitNothing(testHarness);
-        records = Arrays.asList(
-                insertRecord("Ord#5", "LineOrd#5", "SHIP"),
-                // size = 1
-                insertRecord("Ord#6", "LineOrd#6", "AIR")
-                // size = 2
-        );
-        for(StreamRecord<RowData> row : records){
+        records =
+                Arrays.asList(
+                        insertRecord("Ord#5", "LineOrd#5", "SHIP"),
+                        // size = 1
+                        insertRecord("Ord#6", "LineOrd#6", "AIR")
+                        // size = 2
+                        );
+        for (StreamRecord<RowData> row : records) {
             testHarness.processElement2(row);
         }
         assertor.shouldEmit(
@@ -309,46 +306,75 @@ public final class StreamingMiniBatchJoinOperatorTest
                         "7 Bellevue Drive, Pottstown, PE 19464",
                         "Ord#5",
                         "LineOrd#5",
-                        "SHIP")
-        );
+                        "SHIP"));
     }
 
     @Tag("miniBatchSize=10")
     @Test
     public void testInnerJoinWithNoUk() throws Exception {
-        List<StreamRecord<RowData>> records = Arrays.asList(
-                insertRecord("Ord#1", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"),
-                insertRecord("Ord#1", "LineOrd#2", "4 Bellevue Drive, Pottstown, PB 19464"),
-                insertRecord("Ord#1", "LineOrd#2", "4 Bellevue Drive, Pottstown, PB 19464"), // 2x
-                deleteRecord("Ord#6", "LineOrd#6", "8 Bellevue Drive, Pottstown, PF 19464"),
-                insertRecord("Ord#3", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"),
-                // size = 5
-                insertRecord("Ord#3", "LineOrd#3", "5 Bellevue Drive, Pottstown, PD 19464"), // x
-                updateBeforeRecord("Ord#3", "LineOrd#3", "5 Bellevue Drive, Pottstown, PD 19464"), // x
-                // size = 5
-                updateBeforeRecord("Ord#9", "LineOrd#9", "11 Bellevue Drive, Pottstown, PI 19464"), // 5x
-                updateBeforeRecord("Ord#9", "LineOrd#9", "11 Bellevue Drive, Pottstown, PI 19464"), // 3x
-                updateAfterRecord("Ord#10", "LineOrd#10", "14 Bellevue Drive, Pottstown, PJ 19464"),
-                updateAfterRecord("Ord#18", "LineOrd#18", "22 Bellevue Drive, Pottstown, PK 19464"),
-                // size = 9
-                deleteRecord("Ord#1", "LineOrd#2", "4 Bellevue Drive, Pottstown, PB 19464"), // 2x
-                updateAfterRecord("Ord#9", "LineOrd#9", "11 Bellevue Drive, Pottstown, PI 19464"), // 3x
-                // size = 7
-                deleteRecord("Ord#6", "LineOrd#6", "8 Bellevue Drive, Pottstown, PF 19464"), // 4x
-                insertRecord("Ord#6", "LineOrd#6", "8 Bellevue Drive, Pottstown, PF 19464"), // 4x
-                // size = 7
-                updateAfterRecord("Ord#9", "LineOrd#9", "11 Bellevue Drive, Pottstown, PI 19464")); // 5x
-                // size = 6 max = 9
-        for(StreamRecord<RowData> row : records){
+        List<StreamRecord<RowData>> records =
+                Arrays.asList(
+                        insertRecord("Ord#1", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"),
+                        insertRecord("Ord#1", "LineOrd#2", "4 Bellevue Drive, Pottstown, PB 19464"),
+                        insertRecord(
+                                "Ord#1",
+                                "LineOrd#2",
+                                "4 Bellevue Drive, Pottstown, PB 19464"), // 2x
+                        deleteRecord("Ord#6", "LineOrd#6", "8 Bellevue Drive, Pottstown, PF 19464"),
+                        insertRecord("Ord#3", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"),
+                        // size = 5
+                        insertRecord(
+                                "Ord#3", "LineOrd#3", "5 Bellevue Drive, Pottstown, PD 19464"), // x
+                        updateBeforeRecord(
+                                "Ord#3", "LineOrd#3", "5 Bellevue Drive, Pottstown, PD 19464"), // x
+                        // size = 5
+                        updateBeforeRecord(
+                                "Ord#9",
+                                "LineOrd#9",
+                                "11 Bellevue Drive, Pottstown, PI 19464"), // 5x
+                        updateBeforeRecord(
+                                "Ord#9",
+                                "LineOrd#9",
+                                "11 Bellevue Drive, Pottstown, PI 19464"), // 3x
+                        updateAfterRecord(
+                                "Ord#10", "LineOrd#10", "14 Bellevue Drive, Pottstown, PJ 19464"),
+                        updateAfterRecord(
+                                "Ord#18", "LineOrd#18", "22 Bellevue Drive, Pottstown, PK 19464"),
+                        // size = 9
+                        deleteRecord(
+                                "Ord#1",
+                                "LineOrd#2",
+                                "4 Bellevue Drive, Pottstown, PB 19464"), // 2x
+                        updateAfterRecord(
+                                "Ord#9",
+                                "LineOrd#9",
+                                "11 Bellevue Drive, Pottstown, PI 19464"), // 3x
+                        // size = 7
+                        deleteRecord(
+                                "Ord#6",
+                                "LineOrd#6",
+                                "8 Bellevue Drive, Pottstown, PF 19464"), // 4x
+                        insertRecord(
+                                "Ord#6",
+                                "LineOrd#6",
+                                "8 Bellevue Drive, Pottstown, PF 19464"), // 4x
+                        // size = 7
+                        updateAfterRecord(
+                                "Ord#9",
+                                "LineOrd#9",
+                                "11 Bellevue Drive, Pottstown, PI 19464")); // 5x
+        // size = 6 max = 9
+        for (StreamRecord<RowData> row : records) {
             testHarness.processElement2(row);
         }
-        records = Arrays.asList(
-                insertRecord("Ord#1", "LineOrd#1", "AIR"),
-                updateAfterRecord("Ord#1", "LineOrd#2", "SHIP"),
-                insertRecord("Ord#1", "LineOrd#2", "TRUCK"),
-                deleteRecord("Ord#6", "LineOrd#6", "RAILWAY"));
+        records =
+                Arrays.asList(
+                        insertRecord("Ord#1", "LineOrd#1", "AIR"),
+                        updateAfterRecord("Ord#1", "LineOrd#2", "SHIP"),
+                        insertRecord("Ord#1", "LineOrd#2", "TRUCK"),
+                        deleteRecord("Ord#6", "LineOrd#6", "RAILWAY"));
 
-        for(StreamRecord<RowData> row : records){
+        for (StreamRecord<RowData> row : records) {
             testHarness.processElement1(row);
         }
         assertor.shouldEmit(
@@ -384,8 +410,7 @@ public final class StreamingMiniBatchJoinOperatorTest
                         "TRUCK",
                         "Ord#1",
                         "LineOrd#2",
-                        "4 Bellevue Drive, Pottstown, PB 19464")
-        );
+                        "4 Bellevue Drive, Pottstown, PB 19464"));
     }
 
     @Tag("miniBatchSize=3")
@@ -439,19 +464,19 @@ public final class StreamingMiniBatchJoinOperatorTest
             (testDisplayName) -> {
                 if (testDisplayName.contains("JkUk")) {
                     return new JoinInputSideSpec[] {
-                            JoinInputSideSpec.withUniqueKeyContainedByJoinKey(
-                                    leftTypeInfo, leftUniqueKeySelector),
-                            JoinInputSideSpec.withUniqueKeyContainedByJoinKey(
-                                    rightTypeInfo, rightUniqueKeySelector)
+                        JoinInputSideSpec.withUniqueKeyContainedByJoinKey(
+                                LEFT_TYPE_INFO, leftUniqueKeySelector),
+                        JoinInputSideSpec.withUniqueKeyContainedByJoinKey(
+                                RIGHT_TYPE_INFO, rightUniqueKeySelector)
                     };
                 } else if (testDisplayName.contains("HasUk")) {
                     return new JoinInputSideSpec[] {
-                            JoinInputSideSpec.withUniqueKey(leftTypeInfo, leftUniqueKeySelector),
-                            JoinInputSideSpec.withUniqueKey(rightTypeInfo, rightUniqueKeySelector)
+                        JoinInputSideSpec.withUniqueKey(LEFT_TYPE_INFO, leftUniqueKeySelector),
+                        JoinInputSideSpec.withUniqueKey(RIGHT_TYPE_INFO, rightUniqueKeySelector)
                     };
                 } else {
                     return new JoinInputSideSpec[] {
-                            JoinInputSideSpec.withoutUniqueKey(), JoinInputSideSpec.withoutUniqueKey()
+                        JoinInputSideSpec.withoutUniqueKey(), JoinInputSideSpec.withoutUniqueKey()
                     };
                 }
             };
