@@ -34,10 +34,12 @@ public class MiniBatchBufferJkUk implements MiniBatchBuffer {
     private transient Map<RowData, List<RowData>> bundle;
 
     private transient int count;
+    private transient int foldSize;
 
     public MiniBatchBufferJkUk() {
         this.bundle = new HashMap<>();
         this.count = 0;
+        this.foldSize = 0;
     }
 
     public boolean isEmpty() {
@@ -47,18 +49,23 @@ public class MiniBatchBufferJkUk implements MiniBatchBuffer {
     public void clear() {
         bundle.clear();
         count = 0;
+        foldSize = 0;
     }
 
     public int size() {
         return count;
     }
 
+    public int getFoldSize() {
+        return foldSize;
+    }
+
     /**
-     * Fold the records with reverse order. The rule: before the last | last record | result +I +U
-     * only keep the last(+U) +I -U/-D clear both +U +U only keep the last(+U) +U -U/-D clear both
-     * -U +U only keep the last(+U) -D +I/+U only keep the last(+I/+U) where +I refers to {@link
-     * RowKind#INSERT}, +U refers to {@link RowKind#UPDATE_AFTER}, -U refers to {@link
-     * RowKind#UPDATE_BEFORE}, -D refers to {@link RowKind#DELETE}.
+     * Fold the records with reverse order. The rule: before the last ｜ last record ｜ result +I ｜ +U
+     * ｜ only keep the last(+U) +I ｜ -U/-D ｜ clear both +U ｜ +U ｜ only keep the last(+U) +U ｜ -U/-D
+     * ｜ clear both where +I refers to {@link RowKind#INSERT}, +U refers to {@link
+     * RowKind#UPDATE_AFTER}, -U refers to {@link RowKind#UPDATE_BEFORE}, -D refers to {@link
+     * RowKind#DELETE}.
      */
     private void foldRecord(RowData jk) {
         int size = bundle.get(jk).size();
@@ -66,36 +73,28 @@ public class MiniBatchBufferJkUk implements MiniBatchBuffer {
             return;
         }
         int pre = size - 2, last = size - 1;
-        switch (bundle.get(jk).get(pre).getRowKind()) {
-            case INSERT:
-            case UPDATE_AFTER:
-                if (RowDataUtil.isRetractMsg(bundle.get(jk).get(last))) {
-                    bundle.get(jk).remove(last);
-                    count--;
-                }
-                bundle.get(jk).remove(pre);
-                count--;
-                if (bundle.get(jk).isEmpty()) {
-                    bundle.remove(jk);
-                }
-                return;
-                // cannot fold retract+accumulate order Msgs
-            case UPDATE_BEFORE:
-            case DELETE:
-                break;
+        if (RowDataUtil.isAccumulateMsg(bundle.get(jk).get(pre))) {
+            if (RowDataUtil.isRetractMsg(bundle.get(jk).get(last))) {
+                bundle.get(jk).remove(last);
+                //                count--;
+                foldSize++;
+            }
+            bundle.get(jk).remove(pre);
+            //            count--;
+            foldSize++;
+            if (bundle.get(jk).isEmpty()) {
+                bundle.remove(jk);
+            }
         }
-        // the retractMsg could be the start of a new mini-batch
-        //        throw new TableException(
-        //                String.format(
-        //                        "MiniBatch join invalid remaining record in buffer which is %s",
-        //                        bundle.get(jk).get(pre)));
     }
 
     /**
-     * Returns false(Invalid) if the last and current record are +I +I, +U +I, -U/-D -U/-D. -U +I is
-     * reasonable cause the -U means modifying the Uk and +I means new record inserting into with
-     * the same Uk. +I refers to {@link RowKind#INSERT}, +U refers to {@link RowKind#UPDATE_AFTER},
-     * -U refers to {@link RowKind#UPDATE_BEFORE}, -D refers to {@link RowKind#DELETE}.
+     * Returns false(Invalid) if the last one and current record are +I +I, +U +I, -U/-D -U/-D. -U
+     * +I is reasonable cause the -U means modifying the Uk and +I means new record inserting into
+     * with the same Uk.
+     *
+     * <p>+I refers to {@link RowKind#INSERT}, +U refers to {@link RowKind#UPDATE_AFTER}, -U refers
+     * to {@link RowKind#UPDATE_BEFORE}, -D refers to {@link RowKind#DELETE}.
      */
     private boolean checkInvalid(RowData last, RowData record) {
         // first one of the batch could be a record with any type
@@ -139,10 +138,10 @@ public class MiniBatchBufferJkUk implements MiniBatchBuffer {
             bundle.get(jk).add(record);
             count++;
             foldRecord(jk);
-            return count;
         } else {
-            throw new TableException("MiniBatch join invalid record in MiniBatchBufferJkUk ");
+            throw new TableException("MiniBatch join invalid record in MiniBatchBufferJkUk.");
         }
+        return count;
     }
 
     @Override
@@ -155,13 +154,5 @@ public class MiniBatchBufferJkUk implements MiniBatchBuffer {
     @Override
     public Map<RowData, List<RowData>> getMapRecords() {
         return bundle;
-    }
-
-    /**
-     * fold the records.
-     */
-    @Override
-    public void compressRecords() {
-
     }
 }

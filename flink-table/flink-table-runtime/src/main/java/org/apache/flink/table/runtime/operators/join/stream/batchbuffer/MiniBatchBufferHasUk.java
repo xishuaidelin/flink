@@ -45,7 +45,7 @@ public class MiniBatchBufferHasUk implements MiniBatchBuffer {
     private final transient Map<RowData, List<RowData>> uKey2jKey;
 
     /**
-     * respected result: records with a uniqueKey at most exist two. 1, no retractMsg: only one
+     * Expected result: records with a uniqueKey at most exist two. 1, no retractMsg: only one
      * accumulate Msg exists. 2, have retractMsg: one retractMsg first(and then accumulateMsg)
      * exists. things could be a Uk mapping 2 Jks. +I / +U / -D +I / -U +I and the +U is another
      * record changed to this Uk after retract its old uk. -D +U / -U +U.
@@ -57,11 +57,13 @@ public class MiniBatchBufferHasUk implements MiniBatchBuffer {
     private final transient Map<RowData, List<RowData>> bundle;
 
     private transient int count;
+    private transient int foldSize;
 
     public MiniBatchBufferHasUk() {
         this.bundle = new HashMap<>();
         this.uKey2jKey = new HashMap<>();
         this.count = 0;
+        this.foldSize = 0;
     }
 
     public boolean isEmpty() {
@@ -72,29 +74,29 @@ public class MiniBatchBufferHasUk implements MiniBatchBuffer {
         bundle.clear();
         uKey2jKey.clear();
         count = 0;
+        foldSize = 0;
     }
 
     public int size() {
         return count;
     }
 
+    public int getFoldSize() {
+        return foldSize;
+    }
+
     /**
-     * here do not consider the case that uk is equivalent but the joinKey is not equivalent. all
-     * things only obey the uk. So the store style need to be changed.
+     * Here do not consider the case that uk is equivalent but the joinKey is not equivalent. all
+     * things only obey the uk. (no matter what the joinKey is)
      *
-     * <p>Fold the records with reverse order. The rule: before the last | last record | result
-     * check if the uKey2jKey contains the key yes -> check if the joinKey is equivalent equivalent
-     * -> go current logic path nonequivalent ->
+     * <p>the uk is equivalent in following: +I +U only keep the last +U +I -U/-D clear both +U +U
+     * only keep the last +U +U -U/-D clear both.
      *
-     * <p>+I +U (modify the joinKey and not the JoinKey) only keep the last(+U) +I -U/-D (the
-     * joinKey may be not the same with +I ) clear both +U +U (modify the joinKey and not the
-     * JoinKey) only keep the last(+U) +U -U/-D (modify the joinKey and not the JoinKey) clear both.
+     * <p>pair of records not allowed to fold: -U +I/+U , -D +I/+U is not allowed to fold cause the
+     * accMsg could be a totally new record from source.
      *
-     * <p>The retractMsg is only allowed at start of new miniBatch however this is not allowed to
-     * fold cause the retractMsg need to be processed to retract the previous accumulateMsg in last
-     * miniBatch. -U +U , -D +I/+U is not allowed to fold. where +I refers to {@link
-     * RowKind#INSERT}, +U refers to {@link RowKind#UPDATE_AFTER}, -U refers to {@link
-     * RowKind#UPDATE_BEFORE}, -D refers to {@link RowKind#DELETE}.
+     * <p>+I refers to {@link RowKind#INSERT}, +U refers to {@link RowKind#UPDATE_AFTER}, -U refers
+     * to {@link RowKind#UPDATE_BEFORE}, -D refers to {@link RowKind#DELETE}.
      */
     private void foldRecord(RowData uk) {
         int size = bundle.get(uk).size();
@@ -105,18 +107,20 @@ public class MiniBatchBufferHasUk implements MiniBatchBuffer {
         if (RowDataUtil.isAccumulateMsg(bundle.get(uk).get(pre))) {
             if (RowDataUtil.isRetractMsg(bundle.get(uk).get(last))) {
                 bundle.get(uk).remove(last);
-                count--;
+                //                count--;
+                foldSize++;
                 uKey2jKey.get(uk).remove(last);
             }
             bundle.get(uk).remove(pre);
-            count--;
+            //            count--;
+            foldSize++;
             uKey2jKey.get(uk).remove(pre);
         }
     }
 
     /**
      * return true means the record is valid. the record is valid when it is the first one whenever
-     * its type. Returns false if the last and record are +I +I, +U +I, -U -U/-D, -D -U/-D which +I
+     * its type. Returns false if the last one and current record are +I/+U +I, -U/-D -U/-D which +I
      * refers to {@link RowKind#INSERT}, +U refers to {@link RowKind#UPDATE_AFTER}, -U refers to
      * {@link RowKind#UPDATE_BEFORE}, -D refers to {@link RowKind#DELETE}.
      */
@@ -166,7 +170,7 @@ public class MiniBatchBufferHasUk implements MiniBatchBuffer {
             count++;
             foldRecord(uk);
         } else {
-            throw new TableException("MiniBatch join invalid record in MiniBatchBufferHasUk");
+            throw new TableException("MiniBatch join invalid record in MiniBatchBufferHasUk.");
         }
         return count;
     }
@@ -182,23 +186,15 @@ public class MiniBatchBufferHasUk implements MiniBatchBuffer {
         Map<RowData, List<RowData>> result = new HashMap<>();
         for (Map.Entry<RowData, List<RowData>> entry : uKey2jKey.entrySet()) {
             RowData uKey = entry.getKey();
-            List<RowData> values = entry.getValue();
-            for (int idx = 0; idx < values.size(); idx++) {
-                if (!result.containsKey(values.get(idx))) {
+            List<RowData> jKeys = entry.getValue();
+            for (int idx = 0; idx < jKeys.size(); idx++) {
+                if (!result.containsKey(jKeys.get(idx))) {
                     List<RowData> vallist = new ArrayList<>();
-                    result.put(values.get(idx), vallist);
+                    result.put(jKeys.get(idx), vallist);
                 }
-                result.get(values.get(idx)).add(bundle.get(uKey).get(idx));
+                result.get(jKeys.get(idx)).add(bundle.get(uKey).get(idx));
             }
         }
         return result;
-    }
-
-    /**
-     * fold the records.
-     */
-    @Override
-    public void compressRecords() {
-
     }
 }

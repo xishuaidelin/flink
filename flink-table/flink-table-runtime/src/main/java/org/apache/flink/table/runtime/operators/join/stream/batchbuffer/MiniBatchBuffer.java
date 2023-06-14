@@ -41,6 +41,6 @@ public interface MiniBatchBuffer {
     /** return the Map(RowData(joinKey),List(RowData)). */
     public Map<RowData, List<RowData>> getMapRecords();
 
-    /** fold the records. */
-    public void compressRecords();
+    /** check the folding consequence. */
+    public int getFoldSize();
 }

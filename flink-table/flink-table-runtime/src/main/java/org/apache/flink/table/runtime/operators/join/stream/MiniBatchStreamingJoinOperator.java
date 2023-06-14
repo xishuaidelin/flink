@@ -163,7 +163,7 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
         coBundleTrigger.reset();
     }
 
-    protected abstract void processBundles(MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer)
+    protected abstract ReduceStats processBundles(MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer)
             throws Exception;
 
     protected int processSingleSideBundles(
@@ -265,7 +265,7 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
         }
 
         @Override
-        protected void processBundles(MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer)
+        protected ReduceStats processBundles(MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer)
                 throws Exception {
             // process right
             int rightBundleReduceSize =
@@ -275,7 +275,7 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
             int leftBundleReduceSize =
                     this.processSingleSideBundles(
                             leftBuffer, leftRecordStateView, rightRecordStateView, true);
-            //            return ReduceStats.of(leftBundleReduceSize, rightBundleReduceSize);
+            return ReduceStats.of(leftBundleReduceSize, rightBundleReduceSize);
         }
     }
 
@@ -288,7 +288,7 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
         }
 
         @Override
-        protected void processBundles(MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer)
+        protected ReduceStats processBundles(MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer)
                 throws Exception {
             // more efficient to process right first for left out join, i.e, some retractions can be
             // avoided
@@ -300,7 +300,7 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
             int leftBundleReduceSize =
                     this.processSingleSideBundles(
                             leftBuffer, leftRecordStateView, rightRecordStateView, true);
-            //            return ReduceStats.of(leftBundleReduceSize, rightBundleReduceSize);
+            return ReduceStats.of(leftBundleReduceSize, rightBundleReduceSize);
         }
     }
 
@@ -313,7 +313,7 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
         }
 
         @Override
-        protected void processBundles(MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer)
+        protected ReduceStats processBundles(MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer)
                 throws Exception {
 
             // more efficient to process left first for right out join, i.e, some retractions can be
@@ -327,7 +327,7 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
             int rightBundleReduceSize =
                     this.processSingleSideBundles(
                             rightBuffer, rightRecordStateView, leftRecordStateView, false);
-            //            return ReduceStats.of(leftBundleReduceSize, rightBundleReduceSize);
+            return ReduceStats.of(leftBundleReduceSize, rightBundleReduceSize);
         }
     }
 
@@ -340,7 +340,7 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
         }
 
         @Override
-        protected void processBundles(MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer)
+        protected ReduceStats processBundles(MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer)
                 throws Exception {
             // process right
             int rightBundleReduceSize =
@@ -350,7 +350,7 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
             int leftBundleReduceSize =
                     this.processSingleSideBundles(
                             leftBuffer, leftRecordStateView, rightRecordStateView, true);
-            //            return ReduceStats.of(leftBundleReduceSize, rightBundleReduceSize);
+            return ReduceStats.of(leftBundleReduceSize, rightBundleReduceSize);
         }
     }
 

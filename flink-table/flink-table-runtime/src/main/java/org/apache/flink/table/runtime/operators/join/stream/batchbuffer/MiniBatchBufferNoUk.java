@@ -18,13 +18,16 @@
 
 package org.apache.flink.table.runtime.operators.join.stream.batchbuffer;
 
+import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.util.RowDataUtil;
 import org.apache.flink.types.RowKind;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.List;
+import java.util.ListIterator;
 import java.util.Map;
 
 /** for the case that records have no uniqueKey. */
@@ -38,10 +41,13 @@ public class MiniBatchBufferNoUk implements MiniBatchBuffer {
      */
     private transient Map<RowData, List<RowData>> bundle;
 
-    private transient int count;
+    /** if status[jk].get[pos] = false, then bundle[jk].get[pos] is folded. */
+    private transient Map<RowData, List<Boolean>> status;
 
+    private transient int count;
+    private transient int foldSize;
     /**
-     * map(Jk, map(FieldsHash,List(po))) FieldsHash : the hash of fields of input except the
+     * map(Jk, map(FieldsHash,List(pos))) FieldsHash : the hash of fields of input except the
      * RowKind. List[pos]pos : input corresponding position in the bundle valueList. cause there
      * maybe repetitive rows.
      */
@@ -49,8 +55,10 @@ public class MiniBatchBufferNoUk implements MiniBatchBuffer {
 
     public MiniBatchBufferNoUk() {
         this.bundle = new HashMap<>();
+        this.status = new HashMap<>();
         this.dic = new HashMap<>();
         this.count = 0;
+        this.foldSize = 0;
     }
 
     public boolean isEmpty() {
@@ -59,12 +67,18 @@ public class MiniBatchBufferNoUk implements MiniBatchBuffer {
 
     public void clear() {
         count = 0;
+        foldSize = 0;
         bundle.clear();
+        status.clear();
         dic.clear();
     }
 
     public int size() {
         return count;
+    }
+
+    public int getFoldSize() {
+        return foldSize;
     }
 
     private boolean isContainNoJoinKey(RowData jk) {
@@ -78,6 +92,8 @@ public class MiniBatchBufferNoUk implements MiniBatchBuffer {
     private void addJoinKey(RowData jk) {
         List<RowData> val = new ArrayList<>();
         bundle.put(jk, val);
+        List<Boolean> sta = new ArrayList<>();
+        status.put(jk, sta);
         Map<Integer, List<Integer>> mp = new HashMap<>();
         dic.put(jk, mp);
     }
@@ -87,40 +103,41 @@ public class MiniBatchBufferNoUk implements MiniBatchBuffer {
         dic.get(jk).put(hk, dicVal);
     }
 
+    private void addItem(RowData jk, RowData record, int hashKey) {
+        bundle.get(jk).add(record);
+        status.get(jk).add(true);
+        dic.get(jk).get(hashKey).add(bundle.get(jk).size() - 1);
+    }
+
     /**
-     * Fold the records only in accumulate and retract modes.
-     * The rule:
-     * the input is accumulateMsg -> check if there is retractMsg before if yes tnen fold that else add input to the bundle.
-     * the input is retractMsg -> remove the accumulateMsg in the same HashKey from bundle.
+     * Fold the records only in accumulate and retract modes. The rule: the input is accumulateMsg
+     * -> check if there is retractMsg before in the same hashKey if yes tnen fold that else add
+     * input to the bundle. the input is retractMsg -> remove the accumulateMsg in the same HashKey
+     * from bundle. The same HashKey means that the input's field values are completely equivalent.
      *
-     * <p>The same HashKey means that the input's field values are completely equivalent.
-     *
-     * <p>where accumulateMsg refers to +I/+U which refers to {@link RowKind#INSERT}/{@link
-     * RowKind#UPDATE_AFTER}, accumulateMsg refers to -U/-D which refers to {@link
+     * <p>accumulateMsg refers to +I/+U which refers to {@link RowKind#INSERT}/{@link
+     * RowKind#UPDATE_AFTER}, retractMsg refers to -U/-D which refers to {@link
      * RowKind#UPDATE_BEFORE}/{@link RowKind#DELETE}.
      */
-    private void foldRecord(RowData jk, RowKind type, int hashKey, RowData record) {
-        int size = dic.get(jk).get(hashKey).size(), addPos;
-        if (size > 0) {
-            int pos = dic.get(jk).get(hashKey).get(size - 1);
-            if ((RowDataUtil.isAccumulateMsg(record)
-                            && RowDataUtil.isRetractMsg(bundle.get(jk).get(pos)))
-                    || (RowDataUtil.isRetractMsg(record)
-                            && RowDataUtil.isAccumulateMsg(bundle.get(jk).get(pos)))) {
-                dic.get(jk).get(hashKey).remove(size - 1);
-                bundle.get(jk).remove(pos);
-                count--;
-                if (bundle.get(jk).isEmpty()) {
-                    bundle.remove(jk);
-                    dic.remove(jk);
+    private void foldRecord(RowData jk, int hashKey, RowData record) {
+        List<Integer> idx = dic.get(jk).get(hashKey);
+        // new added record is the current record
+        ListIterator<Integer> iterator = idx.listIterator(idx.size() - 1);
+        while (iterator.hasPrevious()) {
+            int pos = iterator.previous();
+            if (status.get(jk).get(pos)) {
+                RowData preRecord = bundle.get(jk).get(pos);
+                if ((RowDataUtil.isAccumulateMsg(record) && RowDataUtil.isRetractMsg(preRecord))
+                        || (RowDataUtil.isRetractMsg(record)
+                                && RowDataUtil.isAccumulateMsg(preRecord))) {
+                    // pre_record & current record is folded
+                    status.get(jk).set(pos, false);
+                    status.get(jk).set(status.get(jk).size() - 1, false);
+                    foldSize += 2;
+                    break;
                 }
-                return;
             }
         }
-        bundle.get(jk).add(record);
-        count++;
-        addPos = bundle.get(jk).size() - 1;
-        dic.get(jk).get(hashKey).add(addPos);
     }
 
     /**
@@ -145,28 +162,46 @@ public class MiniBatchBufferNoUk implements MiniBatchBuffer {
         }
         if (checkInvalid()) {
             record.setRowKind(type);
-            foldRecord(jk, type, hashKey, record);
+            addItem(jk, record, hashKey);
+            count++;
+            foldRecord(jk, hashKey, record);
         } else {
-            throw new RuntimeException("MiniBatch join invalid record in MiniBatchBufferNoUk");
+            throw new TableException("MiniBatch join invalid record in MiniBatchBufferNoUk");
         }
         return count;
     }
 
     @Override
     public List<RowData> getListRecord(RowData jk, RowData uk) {
-        return bundle.get(jk);
+        List<RowData> result = new ArrayList<>();
+        Iterator<RowData> recIter = bundle.get(jk).iterator();
+        for (Boolean aBoolean : status.get(jk)) {
+            RowData record = recIter.next();
+            if (aBoolean) {
+                result.add(record);
+            }
+        }
+        return result;
     }
 
     @Override
     public Map<RowData, List<RowData>> getMapRecords() {
+        for (Map.Entry<RowData, List<RowData>> entry : bundle.entrySet()) {
+            RowData jk = entry.getKey();
+            assert status.get(jk).size() == entry.getValue().size();
+            Iterator<RowData> recIter = entry.getValue().iterator();
+            Iterator<Boolean> statusIter = status.get(jk).iterator();
+            while (statusIter.hasNext()) {
+                boolean exist = statusIter.next();
+                if (exist) {
+                    recIter.next();
+                } else {
+                    statusIter.remove();
+                    recIter.next();
+                    recIter.remove();
+                }
+            }
+        }
         return bundle;
-    }
-
-    /**
-     * fold the records.
-     */
-    @Override
-    public void compressRecords() {
-
     }
 }

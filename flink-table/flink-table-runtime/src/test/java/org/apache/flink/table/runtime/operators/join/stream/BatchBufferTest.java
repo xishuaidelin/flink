@@ -19,6 +19,7 @@
 package org.apache.flink.table.runtime.operators.join.stream;
 
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
+import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.runtime.keyselector.RowDataKeySelector;
 import org.apache.flink.table.runtime.operators.join.stream.batchbuffer.MiniBatchBuffer;
@@ -34,7 +35,9 @@ import javax.annotation.Nullable;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.Callable;
 
+import static org.apache.flink.core.testutils.CommonTestUtils.assertThrows;
 import static org.apache.flink.table.runtime.util.StreamRecordUtils.deleteRecord;
 import static org.apache.flink.table.runtime.util.StreamRecordUtils.insertRecord;
 import static org.apache.flink.table.runtime.util.StreamRecordUtils.updateAfterRecord;
@@ -43,24 +46,11 @@ import static org.apache.flink.table.runtime.util.StreamRecordUtils.updateBefore
 /** Test for MiniBatch buffer only which verify the logic of folding in MiniBatch. */
 public class BatchBufferTest extends BatchBufferTestBase {
 
-    protected MiniBatchBuffer buffer;
-
-    /** get joinKey from record. */
-    @Nullable private RowDataKeySelector joinKeySelector = null;
-
-    public BatchBufferTest() {
-
-        this.joinKeySelector =
-                HandwrittenSelectorUtil.getRowDataSelector(
-                        new int[] {0},
-                        inputTypeInfo.toRowType().getChildren().toArray(new LogicalType[0]));
-    }
-
     /** for JkContainsUk the left records only contain +I +U and only one record for a JoinKey. */
     private void compareJkContainsUkRecords(List<StreamRecord<RowData>> leftAfterFold)
             throws Exception {
         assert joinKeySelector != null;
-        assert buffer.size() == leftAfterFold.size();
+        //        assert buffer.size() == leftAfterFold.size();
         for (StreamRecord<RowData> row : leftAfterFold) {
             RowData joinKey = joinKeySelector.getKey(row.getValue());
             List<RowData> res = buffer.getListRecord(joinKey, null);
@@ -72,7 +62,7 @@ public class BatchBufferTest extends BatchBufferTestBase {
     private void compareHasUkRecords(List<StreamRecord<RowData>> leftAfterFold) throws Exception {
         // check the list of record which is defined by joinKey and hashKey.
         assert joinKeySelector != null;
-        assert buffer.size() == leftAfterFold.size();
+        //        assert buffer.size() == leftAfterFold.size();
         for (StreamRecord<RowData> row : leftAfterFold) {
             RowData uniqueKey = inputKeySelector2.getKey(row.getValue());
             List<RowData> res = buffer.getListRecord(null, uniqueKey);
@@ -84,7 +74,7 @@ public class BatchBufferTest extends BatchBufferTestBase {
     /** */
     private void compareHasNoUkRecords(List<StreamRecord<RowData>> leftAfterFold) throws Exception {
         assert joinKeySelector != null;
-        assert buffer.size() == leftAfterFold.size();
+        //        assert buffer.size() == leftAfterFold.size();
         for (StreamRecord<RowData> row : leftAfterFold) {
             RowData joinKey = joinKeySelector.getKey(row.getValue());
             List<RowData> res = buffer.getListRecord(joinKey, null);
@@ -93,7 +83,8 @@ public class BatchBufferTest extends BatchBufferTestBase {
         }
     }
 
-    private void addSingleRecord(RowData input) throws Exception {
+    private Callable<?> addSingleRecord(StreamRecord<RowData> record) throws Exception {
+        RowData input = record.getValue();
         assert joinKeySelector != null;
         RowData joinKey = joinKeySelector.getKey(input);
         RowData uniqueKey = null;
@@ -102,23 +93,100 @@ public class BatchBufferTest extends BatchBufferTestBase {
             uniqueKey = inputSpecHasUk.getUniqueKeySelector().getKey(input);
         }
         buffer.addRecord(joinKey, uniqueKey, input);
+        return null;
     }
 
     private void addRecordList(List<StreamRecord<RowData>> input) throws Exception {
         for (StreamRecord<RowData> rec : input) {
-            addSingleRecord(rec.getValue());
+            addSingleRecord(rec);
         }
     }
 
+    /**
+     * JoinKey contains UniqueKey: Already considered these cases (in the same joinKey):
+     * +-------------------+------------------------------------------------+
+     * |        Case       |                     Validity                     |
+     * +-------------------+------------------------------------------------+
+     * |        +I +I       |                     Invalid                      |
+     * +-------------------+------------------------------------------------+
+     * |        +U +I       |                     Invalid                      |
+     * +-------------------+------------------------------------------------+
+     * |        -D -U/-D    |                     Invalid                      |
+     * +-------------------+------------------------------------------------+
+     * |        -U -U/-D    |                     Invalid                      |
+     * +-------------------+------------------------------------------------+
+     */
+    @Test
+    public void testJkContainsUkInvalid() throws Exception {
+        buffer = new MiniBatchBufferJkUk();
+        addSingleRecord(insertRecord("Ord#1", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"));
+        assertThrows(
+                "MiniBatch join invalid record in MiniBatchBufferJkUk.",
+                TableException.class,
+                ()->{
+                    return addSingleRecord(insertRecord("Ord#1", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"));
+                }
+        );
+        addSingleRecord(updateAfterRecord("Ord#x", "LineOrd#1", "x Bellevue Drive, Pottstown, PD 19464"));
+        assertThrows(
+                "MiniBatch join invalid record in MiniBatchBufferJkUk.",
+                TableException.class,
+                ()->{
+                    return addSingleRecord(insertRecord("Ord#x", "LineOrd#1", "x Bellevue Drive, Pottstown, PD 19464"));
+                }
+        );
+
+        addSingleRecord(deleteRecord("Ord#x", "LineOrd#1", "x Bellevue Drive, Pottstown, PD 19464"));
+        addSingleRecord(deleteRecord("Ord#x", "LineOrd#1", "x Bellevue Drive, Pottstown, PD 19464"));
+        assertThrows(
+                "MiniBatch join invalid record in MiniBatchBufferJkUk.",
+                TableException.class,
+                ()->{
+                    return addSingleRecord(deleteRecord("Ord#x", "LineOrd#1", "x Bellevue Drive, Pottstown, PD 19464"));
+                }
+        );
+        assertThrows(
+                "MiniBatch join invalid record in MiniBatchBufferJkUk.",
+                TableException.class,
+                ()->{
+                    return addSingleRecord(updateBeforeRecord("Ord#x", "LineOrd#1", "x Bellevue Drive, Pottstown, PD 19464"));
+                }
+        );
+        addSingleRecord(updateBeforeRecord("Ord#y", "LineOrd#2", "y Bellevue Drive, Pottstown, PE 19464"));
+        assertThrows(
+                "MiniBatch join invalid record in MiniBatchBufferJkUk.",
+                TableException.class,
+                ()->{
+                    return addSingleRecord(updateBeforeRecord("Ord#y", "LineOrd#2", "y Bellevue Drive, Pottstown, PE 19464"));
+                }
+        );
+        assertThrows(
+                "MiniBatch join invalid record in MiniBatchBufferJkUk.",
+                TableException.class,
+                ()->{
+                    return addSingleRecord(deleteRecord("Ord#y", "LineOrd#2", "y Bellevue Drive, Pottstown, PE 19464"));
+                }
+        );
+    }
     /** JoinKey is order_id. */
     @Test
-    public void testJkContainsUk() throws Exception {
+    public void testJkContainsUkValid() throws Exception {
         buffer = new MiniBatchBufferJkUk();
         /**
-         * JoinKey contains UniqueKey: Already considered in follow (in the same joinKey): +I -U /
-         * +I -D / +I +U +U +U / +U -U / +U -D -D +I /-D +U -U +I /-U +U.
+         * JoinKey contains UniqueKey: Already considered these cases (in the same joinKey):
+         * +-------------------+------------------------------------------------+
+         * |        Case       |                     Validity                     |
+         * +-------------------+------------------------------------------------+
+         * |        +I -U/-D/+U |                      Valid                       |
+         * +-------------------+------------------------------------------------+
+         * |        +U -U/-D/+U |                      Valid                       |
+         * +-------------------+------------------------------------------------+
+         * |        -D +I/+U    |                      Valid                       |
+         * +-------------------+------------------------------------------------+
+         * |        -U +I/+U    |                      Valid                       |
+         * +-------------------+------------------------------------------------+
          */
-        addRecordList(
+        List<StreamRecord<RowData>> records =
                 Arrays.asList(
                         insertRecord("Ord#1", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"),
                         insertRecord("Ord#2", "LineOrd#2", "4 Bellevue Drive, Pottstown, PB 19464"),
@@ -170,7 +238,8 @@ public class BatchBufferTest extends BatchBufferTestBase {
                         updateAfterRecord(
                                 "Ord#7", "LineOrd#7", "9 Bellevue Drive, Pottstown, PG 19464"),
                         updateAfterRecord(
-                                "Ord#4", "LineOrd#4", "6 Bellevue Drive, Pottstown, PD 19464")));
+                                "Ord#4", "LineOrd#4", "6 Bellevue Drive, Pottstown, PD 19464"));
+        addRecordList(records);
         List<StreamRecord<RowData>> result =
                 Arrays.asList(
                         insertRecord(
@@ -194,10 +263,57 @@ public class BatchBufferTest extends BatchBufferTestBase {
                         updateAfterRecord(
                                 "Ord#4", "LineOrd#4", "6 Bellevue Drive, Pottstown, PD 19464"));
         compareJkContainsUkRecords(result);
+        assert buffer.getFoldSize() == records.size() - result.size();
     }
 
     /**
-     * what if retractMsg with different joinKey should do ? These cases are considered in follow:
+     * in the same uk:
+     * +-------------------+------------------------------------------------+
+     * |        Case       |                     Validity                     |
+     * +-------------------+------------------------------------------------+
+     * |      +I/+U +I      |                     Invalid                      |
+     * +-------------------+------------------------------------------------+
+     * |     -U/-D -U/-D    |                     Invalid                      |
+     * +-------------------+------------------------------------------------+
+     * */
+    @Test
+    public void testHasUniquekeyInvalid() throws Exception {
+        buffer = new MiniBatchBufferHasUk();
+        addSingleRecord(insertRecord("Ord#1", "LineOrd#2", "3 Bellevue Drive, Pottstown, PA 19464"));
+        assertThrows(
+                "MiniBatch join invalid record in MiniBatchBufferHasUk.",
+                TableException.class,
+                ()->{
+                    return addSingleRecord(insertRecord("Ord#3", "LineOrd#2", "4 Bellevue Drive, Pottstown, PA 19464"));
+                }
+        );
+        addSingleRecord(updateAfterRecord("Ord#3", "LineOrd#2", "4 Bellevue Drive, Pottstown, PA 19464"));
+        assertThrows(
+                "MiniBatch join invalid record in MiniBatchBufferHasUk.",
+                TableException.class,
+                ()->{
+                    return addSingleRecord(insertRecord("Ord#3", "LineOrd#2", "4 Bellevue Drive, Pottstown, PA 19464"));
+                }
+        );
+
+        addSingleRecord(updateBeforeRecord("Ord#2", "LineOrd#6", "8 Bellevue Drive, Pottstown, PD 19464"));
+        assertThrows(
+                "MiniBatch join invalid record in MiniBatchBufferHasUk.",
+                TableException.class,
+                ()->{
+                    return addSingleRecord(deleteRecord("Ord#2", "LineOrd#6", "4 Bellevue Drive, Pottstown, PA 19464"));
+                }
+        );
+        assertThrows(
+                "MiniBatch join invalid record in MiniBatchBufferHasUk.",
+                TableException.class,
+                ()->{
+                    return addSingleRecord(updateBeforeRecord("Ord#2", "LineOrd#6", "4 Bellevue Drive, Pottstown, PA 19464"));
+                }
+        );
+    }
+    /**
+     * These cases are considered in follow:
      * +I +U (modify the joinKey and not the JoinKey) only keep the last(+U) +I -U/-D (the joinKey
      * may be not the same with +I ) clear both
      *
@@ -205,9 +321,9 @@ public class BatchBufferTest extends BatchBufferTestBase {
      * +I/+U only keep the last(+I/+U).
      */
     @Test
-    public void testHasUniquekeyAccBegin() throws Exception {
+    public void testHasUniquekeyAccBeginValid() throws Exception {
         buffer = new MiniBatchBufferHasUk();
-        addRecordList(
+        List<StreamRecord<RowData>> records =
                 Arrays.asList(
                         insertRecord("Ord#1", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"),
                         insertRecord("Ord#1", "LineOrd#2", "4 Bellevue Drive, Pottstown, PB 19464"),
@@ -232,7 +348,8 @@ public class BatchBufferTest extends BatchBufferTestBase {
                                 "LineOrd#10",
                                 "yyy Bellevue Drive, Pottstown, PJ 19464"),
                         deleteRecord( // +I -D with different joinKey
-                                "Ord#9", "LineOrd#3", "5 Bellevue Drive, Pottstown, PC 19464")));
+                                "Ord#9", "LineOrd#3", "5 Bellevue Drive, Pottstown, PC 19464"));
+        addRecordList(records);
         List<StreamRecord<RowData>> result =
                 Arrays.asList(
                         updateAfterRecord( // +I +U with different joinKey
@@ -244,13 +361,13 @@ public class BatchBufferTest extends BatchBufferTestBase {
                                 "LineOrd#10",
                                 "yyy Bellevue Drive, Pottstown, PJ 19464"));
         compareHasUkRecords(result);
-        assert buffer.size() == result.size();
+        assert buffer.getFoldSize() == records.size() - result.size();
     }
 
     @Test
-    public void testHasUniquekeyRetractBegin() throws Exception {
+    public void testHasUniquekeyRetractBeginValid() throws Exception {
         buffer = new MiniBatchBufferHasUk();
-        addRecordList(
+        List<StreamRecord<RowData>> records =
                 Arrays.asList(
                         // retract a Msg that is already retracted with the same uk before is
                         // invalid.
@@ -267,7 +384,9 @@ public class BatchBufferTest extends BatchBufferTestBase {
                         updateAfterRecord(
                                 "Ord#6", "LineOrd#6", "8 Bellevue Drive, Pottstown, PF 19464"),
                         updateBeforeRecord(
-                                "Ord#12", "LineOrd#4", "6 Bellevue Drive, Pottstown, PD 19464")));
+                                "Ord#12", "LineOrd#4", "6 Bellevue Drive, Pottstown, PD 19464"));
+
+        addRecordList(records);
         List<StreamRecord<RowData>> result =
                 Arrays.asList(
                         deleteRecord("Ord#1", "LineOrd#2", "4 Bellevue Drive, Pottstown, PB 19464"),
@@ -285,13 +404,13 @@ public class BatchBufferTest extends BatchBufferTestBase {
                         updateBeforeRecord(
                                 "Ord#12", "LineOrd#4", "6 Bellevue Drive, Pottstown, PD 19464"));
         compareHasUkRecords(result);
-        assert buffer.size() == result.size();
+        assert buffer.getFoldSize() == records.size() - result.size();
     }
 
     @Test
     public void testNoUniqueKey() throws Exception {
         buffer = new MiniBatchBufferNoUk();
-        addRecordList(
+        List<StreamRecord<RowData>> records =
                 Arrays.asList(
                         // jk is equivalent
                         //    others are equivalent and nonequivalent.
@@ -337,9 +456,8 @@ public class BatchBufferTest extends BatchBufferTestBase {
                                 "LineOrd#6",
                                 "8 Bellevue Drive, Pottstown, PF 19464"), // yy
                         updateBeforeRecord( // this -U shouldn't be folded
-                                "Ord#9",
-                                "LineOrd#9",
-                                "11 Bellevue Drive, Pottstown, PI 19464"))); // y
+                                "Ord#9", "LineOrd#9", "11 Bellevue Drive, Pottstown, PI 19464"));
+        addRecordList(records);
 
         List<StreamRecord<RowData>> result =
                 Arrays.asList(
@@ -360,6 +478,6 @@ public class BatchBufferTest extends BatchBufferTestBase {
                                 "Ord#9", "LineOrd#9", "11 Bellevue Drive, Pottstown, PI 19464") // y
                         );
         compareHasNoUkRecords(result);
-        assert buffer.size() == result.size();
+        assert buffer.getFoldSize() == records.size() - result.size();
     }
 }

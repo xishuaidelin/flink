@@ -20,6 +20,7 @@ package org.apache.flink.table.runtime.operators.join.stream;
 
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.runtime.keyselector.RowDataKeySelector;
+import org.apache.flink.table.runtime.operators.join.stream.batchbuffer.MiniBatchBuffer;
 import org.apache.flink.table.runtime.operators.join.stream.state.JoinInputSideSpec;
 import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
 import org.apache.flink.table.types.logical.CharType;
@@ -28,34 +29,39 @@ import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.table.types.logical.VarCharType;
 import org.apache.flink.table.utils.HandwrittenSelectorUtil;
 
+import javax.annotation.Nullable;
+
 /** TestBase for BatchBufferTest. */
 public abstract class BatchBufferTestBase {
-    /**
-     * for JkContainsUk -> JoinKey & UniqueKey = order_id. for ContainsUk -> JoinKey = order_id &
-     * UniqueKey = line_order_id. for NoUk -> JoinKey = order_id.
-     */
+    protected MiniBatchBuffer buffer;
+
     protected final InternalTypeInfo<RowData> inputTypeInfo =
             InternalTypeInfo.of(
                     RowType.of(
                             new LogicalType[] {
-                                new CharType(false, 20),
-                                new CharType(false, 20),
-                                VarCharType.STRING_TYPE
+                                    new CharType(false, 20),
+                                    new CharType(false, 20),
+                                    VarCharType.STRING_TYPE
                             },
                             new String[] {"order_id", "line_order_id", "shipping_address"}));
 
-    protected final RowDataKeySelector inputKeySelector1 =
+
+    /** get joinKey from record. */
+    @Nullable
+    protected RowDataKeySelector joinKeySelector =
             HandwrittenSelectorUtil.getRowDataSelector(
                     new int[] {0},
-                    inputTypeInfo.toRowType().getChildren().toArray(new LogicalType[0]));
+                    inputTypeInfo.toRowType().getChildren().toArray(new LogicalType[0]));;
+
+    /**
+     * for JkContainsUk -> JoinKey & UniqueKey = order_id. for ContainsUk -> JoinKey = order_id &
+     * UniqueKey = line_order_id. for NoUk -> JoinKey = order_id.
+     */
 
     protected final RowDataKeySelector inputKeySelector2 =
             HandwrittenSelectorUtil.getRowDataSelector(
                     new int[] {1},
                     inputTypeInfo.toRowType().getChildren().toArray(new LogicalType[0]));
-
-    protected final JoinInputSideSpec inputSpecJkUk =
-            JoinInputSideSpec.withUniqueKeyContainedByJoinKey(inputTypeInfo, inputKeySelector1);
 
     protected final JoinInputSideSpec inputSpecHasUk =
             JoinInputSideSpec.withUniqueKey(inputTypeInfo, inputKeySelector2);
