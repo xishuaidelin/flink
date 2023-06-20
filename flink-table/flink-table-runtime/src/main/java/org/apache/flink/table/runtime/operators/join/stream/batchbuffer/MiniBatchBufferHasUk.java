@@ -177,12 +177,12 @@ public class MiniBatchBufferHasUk implements MiniBatchBuffer {
 
     /** <param>jk should be null. */
     @Override
-    public List<RowData> getListRecord(RowData jk, RowData uk) {
+    public List<RowData> getRecordsWithUk(RowData jk, RowData uk) {
         return bundle.get(uk);
     }
 
     @Override
-    public Map<RowData, List<RowData>> getMapRecords() {
+    public Map<RowData, List<RowData>> getRecordsWithJk() {
         Map<RowData, List<RowData>> result = new HashMap<>();
         for (Map.Entry<RowData, List<RowData>> entry : uKey2jKey.entrySet()) {
             RowData uKey = entry.getKey();

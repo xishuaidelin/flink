@@ -21,17 +21,11 @@ package org.apache.flink.table.runtime.operators.join.stream;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.data.RowData;
-import org.apache.flink.table.runtime.keyselector.RowDataKeySelector;
-import org.apache.flink.table.runtime.operators.join.stream.batchbuffer.MiniBatchBuffer;
 import org.apache.flink.table.runtime.operators.join.stream.batchbuffer.MiniBatchBufferHasUk;
 import org.apache.flink.table.runtime.operators.join.stream.batchbuffer.MiniBatchBufferJkUk;
 import org.apache.flink.table.runtime.operators.join.stream.batchbuffer.MiniBatchBufferNoUk;
-import org.apache.flink.table.types.logical.LogicalType;
-import org.apache.flink.table.utils.HandwrittenSelectorUtil;
 
 import org.junit.jupiter.api.Test;
-
-import javax.annotation.Nullable;
 
 import java.util.Arrays;
 import java.util.List;
@@ -53,7 +47,7 @@ public class BatchBufferTest extends BatchBufferTestBase {
         //        assert buffer.size() == leftAfterFold.size();
         for (StreamRecord<RowData> row : leftAfterFold) {
             RowData joinKey = joinKeySelector.getKey(row.getValue());
-            List<RowData> res = buffer.getListRecord(joinKey, null);
+            List<RowData> res = buffer.getRecordsWithUk(joinKey, null);
             assert !res.isEmpty();
             assert row.getValue().equals(res.get(0));
         }
@@ -65,7 +59,7 @@ public class BatchBufferTest extends BatchBufferTestBase {
         //        assert buffer.size() == leftAfterFold.size();
         for (StreamRecord<RowData> row : leftAfterFold) {
             RowData uniqueKey = inputKeySelector2.getKey(row.getValue());
-            List<RowData> res = buffer.getListRecord(null, uniqueKey);
+            List<RowData> res = buffer.getRecordsWithUk(null, uniqueKey);
             assert !res.isEmpty();
             assert res.contains(row.getValue());
         }
@@ -77,7 +71,7 @@ public class BatchBufferTest extends BatchBufferTestBase {
         //        assert buffer.size() == leftAfterFold.size();
         for (StreamRecord<RowData> row : leftAfterFold) {
             RowData joinKey = joinKeySelector.getKey(row.getValue());
-            List<RowData> res = buffer.getListRecord(joinKey, null);
+            List<RowData> res = buffer.getRecordsWithUk(joinKey, null);
             assert !res.isEmpty();
             assert res.contains(row.getValue());
         }
@@ -103,89 +97,90 @@ public class BatchBufferTest extends BatchBufferTestBase {
     }
 
     /**
-     * JoinKey contains UniqueKey: Already considered these cases (in the same joinKey):
-     * +-------------------+------------------------------------------------+
-     * |        Case       |                     Validity                     |
-     * +-------------------+------------------------------------------------+
-     * |        +I +I       |                     Invalid                      |
-     * +-------------------+------------------------------------------------+
-     * |        +U +I       |                     Invalid                      |
-     * +-------------------+------------------------------------------------+
-     * |        -D -U/-D    |                     Invalid                      |
-     * +-------------------+------------------------------------------------+
-     * |        -U -U/-D    |                     Invalid                      |
-     * +-------------------+------------------------------------------------+
+     * JoinKey contains UniqueKey: Already considered these cases (in the same joinKey). | Case |
+     * Validity | | +I +I | Invalid | | +U +I | Invalid | | -D -U/-D | Invalid | | -U -U/-D |
+     * Invalid |
      */
     @Test
     public void testJkContainsUkInvalid() throws Exception {
         buffer = new MiniBatchBufferJkUk();
-        addSingleRecord(insertRecord("Ord#1", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"));
+        addSingleRecord(
+                insertRecord("Ord#1", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"));
         assertThrows(
                 "MiniBatch join invalid record in MiniBatchBufferJkUk.",
                 TableException.class,
-                ()->{
-                    return addSingleRecord(insertRecord("Ord#1", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"));
-                }
-        );
-        addSingleRecord(updateAfterRecord("Ord#x", "LineOrd#1", "x Bellevue Drive, Pottstown, PD 19464"));
+                () -> {
+                    return addSingleRecord(
+                            insertRecord(
+                                    "Ord#1", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"));
+                });
+        addSingleRecord(
+                updateAfterRecord("Ord#x", "LineOrd#1", "x Bellevue Drive, Pottstown, PD 19464"));
         assertThrows(
                 "MiniBatch join invalid record in MiniBatchBufferJkUk.",
                 TableException.class,
-                ()->{
-                    return addSingleRecord(insertRecord("Ord#x", "LineOrd#1", "x Bellevue Drive, Pottstown, PD 19464"));
-                }
-        );
+                () -> {
+                    return addSingleRecord(
+                            insertRecord(
+                                    "Ord#x", "LineOrd#1", "x Bellevue Drive, Pottstown, PD 19464"));
+                });
 
-        addSingleRecord(deleteRecord("Ord#x", "LineOrd#1", "x Bellevue Drive, Pottstown, PD 19464"));
-        addSingleRecord(deleteRecord("Ord#x", "LineOrd#1", "x Bellevue Drive, Pottstown, PD 19464"));
+        addSingleRecord(
+                deleteRecord("Ord#x", "LineOrd#1", "x Bellevue Drive, Pottstown, PD 19464"));
+        addSingleRecord(
+                deleteRecord("Ord#x", "LineOrd#1", "x Bellevue Drive, Pottstown, PD 19464"));
         assertThrows(
                 "MiniBatch join invalid record in MiniBatchBufferJkUk.",
                 TableException.class,
-                ()->{
-                    return addSingleRecord(deleteRecord("Ord#x", "LineOrd#1", "x Bellevue Drive, Pottstown, PD 19464"));
-                }
-        );
+                () -> {
+                    return addSingleRecord(
+                            deleteRecord(
+                                    "Ord#x", "LineOrd#1", "x Bellevue Drive, Pottstown, PD 19464"));
+                });
         assertThrows(
                 "MiniBatch join invalid record in MiniBatchBufferJkUk.",
                 TableException.class,
-                ()->{
-                    return addSingleRecord(updateBeforeRecord("Ord#x", "LineOrd#1", "x Bellevue Drive, Pottstown, PD 19464"));
-                }
-        );
-        addSingleRecord(updateBeforeRecord("Ord#y", "LineOrd#2", "y Bellevue Drive, Pottstown, PE 19464"));
+                () -> {
+                    return addSingleRecord(
+                            updateBeforeRecord(
+                                    "Ord#x", "LineOrd#1", "x Bellevue Drive, Pottstown, PD 19464"));
+                });
+        addSingleRecord(
+                updateBeforeRecord("Ord#y", "LineOrd#2", "y Bellevue Drive, Pottstown, PE 19464"));
         assertThrows(
                 "MiniBatch join invalid record in MiniBatchBufferJkUk.",
                 TableException.class,
-                ()->{
-                    return addSingleRecord(updateBeforeRecord("Ord#y", "LineOrd#2", "y Bellevue Drive, Pottstown, PE 19464"));
-                }
-        );
+                () -> {
+                    return addSingleRecord(
+                            updateBeforeRecord(
+                                    "Ord#y", "LineOrd#2", "y Bellevue Drive, Pottstown, PE 19464"));
+                });
         assertThrows(
                 "MiniBatch join invalid record in MiniBatchBufferJkUk.",
                 TableException.class,
-                ()->{
-                    return addSingleRecord(deleteRecord("Ord#y", "LineOrd#2", "y Bellevue Drive, Pottstown, PE 19464"));
-                }
-        );
+                () -> {
+                    return addSingleRecord(
+                            deleteRecord(
+                                    "Ord#y", "LineOrd#2", "y Bellevue Drive, Pottstown, PE 19464"));
+                });
     }
+
     /** JoinKey is order_id. */
     @Test
     public void testJkContainsUkValid() throws Exception {
         buffer = new MiniBatchBufferJkUk();
-        /**
-         * JoinKey contains UniqueKey: Already considered these cases (in the same joinKey):
-         * +-------------------+------------------------------------------------+
-         * |        Case       |                     Validity                     |
-         * +-------------------+------------------------------------------------+
-         * |        +I -U/-D/+U |                      Valid                       |
-         * +-------------------+------------------------------------------------+
-         * |        +U -U/-D/+U |                      Valid                       |
-         * +-------------------+------------------------------------------------+
-         * |        -D +I/+U    |                      Valid                       |
-         * +-------------------+------------------------------------------------+
-         * |        -U +I/+U    |                      Valid                       |
-         * +-------------------+------------------------------------------------+
-         */
+        //  Already considered these cases (in the same joinKey).
+        // +-------------------+------------------------------------------------+
+        // |        Case       |                     Validity                   |
+        // +-------------------+------------------------------------------------+
+        // |        +I -U/-D/+U |                      Valid                    |
+        // +-------------------+------------------------------------------------+
+        // |        +U -U/-D/+U |                      Valid                    |
+        // +-------------------+------------------------------------------------+
+        // |        -D +I/+U    |                      Valid                    |
+        // +-------------------+------------------------------------------------+
+        // |        -U +I/+U    |                      Valid                    |
+        // +-------------------+------------------------------------------------+
         List<StreamRecord<RowData>> records =
                 Arrays.asList(
                         insertRecord("Ord#1", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"),
@@ -266,56 +261,61 @@ public class BatchBufferTest extends BatchBufferTestBase {
         assert buffer.getFoldSize() == records.size() - result.size();
     }
 
-    /**
-     * in the same uk:
-     * +-------------------+------------------------------------------------+
-     * |        Case       |                     Validity                     |
-     * +-------------------+------------------------------------------------+
-     * |      +I/+U +I      |                     Invalid                      |
-     * +-------------------+------------------------------------------------+
-     * |     -U/-D -U/-D    |                     Invalid                      |
-     * +-------------------+------------------------------------------------+
-     * */
+    // in the same uk.
+    // +-------------------+------------------------------------------------+
+    // |        Case       |                     Validity                   |
+    // +-------------------+------------------------------------------------+
+    // |      +I/+U +I      |                     Invalid                   |
+    // +-------------------+------------------------------------------------+
+    // |     -U/-D -U/-D    |                     Invalid                   |
+    // +-------------------+------------------------------------------------+
     @Test
     public void testHasUniquekeyInvalid() throws Exception {
         buffer = new MiniBatchBufferHasUk();
-        addSingleRecord(insertRecord("Ord#1", "LineOrd#2", "3 Bellevue Drive, Pottstown, PA 19464"));
+        addSingleRecord(
+                insertRecord("Ord#1", "LineOrd#2", "3 Bellevue Drive, Pottstown, PA 19464"));
         assertThrows(
                 "MiniBatch join invalid record in MiniBatchBufferHasUk.",
                 TableException.class,
-                ()->{
-                    return addSingleRecord(insertRecord("Ord#3", "LineOrd#2", "4 Bellevue Drive, Pottstown, PA 19464"));
-                }
-        );
-        addSingleRecord(updateAfterRecord("Ord#3", "LineOrd#2", "4 Bellevue Drive, Pottstown, PA 19464"));
+                () -> {
+                    return addSingleRecord(
+                            insertRecord(
+                                    "Ord#3", "LineOrd#2", "4 Bellevue Drive, Pottstown, PA 19464"));
+                });
+        addSingleRecord(
+                updateAfterRecord("Ord#3", "LineOrd#2", "4 Bellevue Drive, Pottstown, PA 19464"));
         assertThrows(
                 "MiniBatch join invalid record in MiniBatchBufferHasUk.",
                 TableException.class,
-                ()->{
-                    return addSingleRecord(insertRecord("Ord#3", "LineOrd#2", "4 Bellevue Drive, Pottstown, PA 19464"));
-                }
-        );
+                () -> {
+                    return addSingleRecord(
+                            insertRecord(
+                                    "Ord#3", "LineOrd#2", "4 Bellevue Drive, Pottstown, PA 19464"));
+                });
 
-        addSingleRecord(updateBeforeRecord("Ord#2", "LineOrd#6", "8 Bellevue Drive, Pottstown, PD 19464"));
+        addSingleRecord(
+                updateBeforeRecord("Ord#2", "LineOrd#6", "8 Bellevue Drive, Pottstown, PD 19464"));
         assertThrows(
                 "MiniBatch join invalid record in MiniBatchBufferHasUk.",
                 TableException.class,
-                ()->{
-                    return addSingleRecord(deleteRecord("Ord#2", "LineOrd#6", "4 Bellevue Drive, Pottstown, PA 19464"));
-                }
-        );
+                () -> {
+                    return addSingleRecord(
+                            deleteRecord(
+                                    "Ord#2", "LineOrd#6", "4 Bellevue Drive, Pottstown, PA 19464"));
+                });
         assertThrows(
                 "MiniBatch join invalid record in MiniBatchBufferHasUk.",
                 TableException.class,
-                ()->{
-                    return addSingleRecord(updateBeforeRecord("Ord#2", "LineOrd#6", "4 Bellevue Drive, Pottstown, PA 19464"));
-                }
-        );
+                () -> {
+                    return addSingleRecord(
+                            updateBeforeRecord(
+                                    "Ord#2", "LineOrd#6", "4 Bellevue Drive, Pottstown, PA 19464"));
+                });
     }
+
     /**
-     * These cases are considered in follow:
-     * +I +U (modify the joinKey and not the JoinKey) only keep the last(+U) +I -U/-D (the joinKey
-     * may be not the same with +I ) clear both
+     * These cases are considered in follow: +I +U (modify the joinKey and not the JoinKey) only
+     * keep the last(+U) +I -U/-D (the joinKey may be not the same with +I ) clear both
      *
      * <p>The retractMsg is only allowed at start of new miniBatch -U +U only keep the last(+U) -D
      * +I/+U only keep the last(+I/+U).

@@ -36,10 +36,10 @@ public interface MiniBatchBuffer {
     /** return the size of the buffer now. */
     public int addRecord(RowData jk, @Nullable RowData uk, RowData record) throws Exception;
 
-    public List<RowData> getListRecord(RowData jk, @Nullable RowData uk);
+    public List<RowData> getRecordsWithUk(RowData jk, @Nullable RowData uk);
 
     /** return the Map(RowData(joinKey),List(RowData)). */
-    public Map<RowData, List<RowData>> getMapRecords();
+    public Map<RowData, List<RowData>> getRecordsWithJk();
 
     /** check the folding consequence. */
     public int getFoldSize();

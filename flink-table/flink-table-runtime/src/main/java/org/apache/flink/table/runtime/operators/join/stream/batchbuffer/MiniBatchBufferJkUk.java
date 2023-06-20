@@ -145,14 +145,14 @@ public class MiniBatchBufferJkUk implements MiniBatchBuffer {
     }
 
     @Override
-    public List<RowData> getListRecord(RowData jk, RowData uk) {
+    public List<RowData> getRecordsWithUk(RowData jk, RowData uk) {
         List<RowData> res = bundle.get(jk);
         assert res.size() == 1;
         return res;
     }
 
     @Override
-    public Map<RowData, List<RowData>> getMapRecords() {
+    public Map<RowData, List<RowData>> getRecordsWithJk() {
         return bundle;
     }
 }

@@ -39,25 +39,23 @@ public abstract class BatchBufferTestBase {
             InternalTypeInfo.of(
                     RowType.of(
                             new LogicalType[] {
-                                    new CharType(false, 20),
-                                    new CharType(false, 20),
-                                    VarCharType.STRING_TYPE
+                                new CharType(false, 20),
+                                new CharType(false, 20),
+                                VarCharType.STRING_TYPE
                             },
                             new String[] {"order_id", "line_order_id", "shipping_address"}));
-
 
     /** get joinKey from record. */
     @Nullable
     protected RowDataKeySelector joinKeySelector =
             HandwrittenSelectorUtil.getRowDataSelector(
                     new int[] {0},
-                    inputTypeInfo.toRowType().getChildren().toArray(new LogicalType[0]));;
+                    inputTypeInfo.toRowType().getChildren().toArray(new LogicalType[0]));
 
     /**
      * for JkContainsUk -> JoinKey & UniqueKey = order_id. for ContainsUk -> JoinKey = order_id &
      * UniqueKey = line_order_id. for NoUk -> JoinKey = order_id.
      */
-
     protected final RowDataKeySelector inputKeySelector2 =
             HandwrittenSelectorUtil.getRowDataSelector(
                     new int[] {1},

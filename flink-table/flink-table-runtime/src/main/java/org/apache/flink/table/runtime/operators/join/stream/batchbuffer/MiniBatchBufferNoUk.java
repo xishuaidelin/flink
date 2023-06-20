@@ -172,7 +172,7 @@ public class MiniBatchBufferNoUk implements MiniBatchBuffer {
     }
 
     @Override
-    public List<RowData> getListRecord(RowData jk, RowData uk) {
+    public List<RowData> getRecordsWithUk(RowData jk, RowData uk) {
         List<RowData> result = new ArrayList<>();
         Iterator<RowData> recIter = bundle.get(jk).iterator();
         for (Boolean aBoolean : status.get(jk)) {
@@ -185,7 +185,7 @@ public class MiniBatchBufferNoUk implements MiniBatchBuffer {
     }
 
     @Override
-    public Map<RowData, List<RowData>> getMapRecords() {
+    public Map<RowData, List<RowData>> getRecordsWithJk() {
         for (Map.Entry<RowData, List<RowData>> entry : bundle.entrySet()) {
             RowData jk = entry.getKey();
             assert status.get(jk).size() == entry.getValue().size();
