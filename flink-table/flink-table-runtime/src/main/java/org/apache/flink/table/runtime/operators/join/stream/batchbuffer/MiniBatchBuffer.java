@@ -31,7 +31,7 @@ public interface MiniBatchBuffer {
 
     public void clear();
 
-    public int size();
+    public int processedSize();
 
     /** return the size of the buffer now. */
     public int addRecord(RowData jk, @Nullable RowData uk, RowData record) throws Exception;

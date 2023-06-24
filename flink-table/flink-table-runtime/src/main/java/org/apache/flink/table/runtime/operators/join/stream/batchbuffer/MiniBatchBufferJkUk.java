@@ -18,7 +18,6 @@
 
 package org.apache.flink.table.runtime.operators.join.stream.batchbuffer;
 
-import org.apache.flink.table.api.TableException;
 import org.apache.flink.table.data.RowData;
 import org.apache.flink.table.data.util.RowDataUtil;
 import org.apache.flink.types.RowKind;
@@ -28,7 +27,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** for the case that joinKey contains uniqueKey. */
+/**
+ * For the case that joinKey contains uniqueKey. The size of records in state is not more than 1.
+ */
 public class MiniBatchBufferJkUk implements MiniBatchBuffer {
 
     private transient Map<RowData, List<RowData>> bundle;
@@ -52,7 +53,7 @@ public class MiniBatchBufferJkUk implements MiniBatchBuffer {
         foldSize = 0;
     }
 
-    public int size() {
+    public int processedSize() {
         return count;
     }
 
@@ -61,52 +62,27 @@ public class MiniBatchBufferJkUk implements MiniBatchBuffer {
     }
 
     /**
-     * Fold the records with reverse order. The rule: before the last ｜ last record ｜ result +I ｜ +U
-     * ｜ only keep the last(+U) +I ｜ -U/-D ｜ clear both +U ｜ +U ｜ only keep the last(+U) +U ｜ -U/-D
-     * ｜ clear both where +I refers to {@link RowKind#INSERT}, +U refers to {@link
-     * RowKind#UPDATE_AFTER}, -U refers to {@link RowKind#UPDATE_BEFORE}, -D refers to {@link
-     * RowKind#DELETE}.
+     * Fold the records with reverse order. The rule: before the last | last record | result +I/+U
+     * +U/+I only keep the last(+U/+I) +I/+U -U/-D clear both -U/-D +U/+I only keep the last(+U/+I)
+     * where +I refers to {@link RowKind#INSERT}, +U refers to {@link RowKind#UPDATE_AFTER}, -U
+     * refers to {@link RowKind#UPDATE_BEFORE}, -D refers to {@link RowKind#DELETE}.
      */
     private void foldRecord(RowData jk) {
-        int size = bundle.get(jk).size();
+        List<RowData> list = bundle.get(jk);
+        int size = list.size();
         if (size < 2) {
             return;
         }
         int pre = size - 2, last = size - 1;
-        if (RowDataUtil.isAccumulateMsg(bundle.get(jk).get(pre))) {
-            if (RowDataUtil.isRetractMsg(bundle.get(jk).get(last))) {
-                bundle.get(jk).remove(last);
-                //                count--;
+        if (RowDataUtil.isAccumulateMsg(list.get(pre))) {
+            if (RowDataUtil.isRetractMsg(list.get(last))) {
+                list.remove(last);
                 foldSize++;
             }
-            bundle.get(jk).remove(pre);
-            //            count--;
+            list.remove(pre);
             foldSize++;
-            if (bundle.get(jk).isEmpty()) {
+            if (list.isEmpty()) {
                 bundle.remove(jk);
-            }
-        }
-    }
-
-    /**
-     * Returns false(Invalid) if the last one and current record are +I +I, +U +I, -U/-D -U/-D. -U
-     * +I is reasonable cause the -U means modifying the Uk and +I means new record inserting into
-     * with the same Uk.
-     *
-     * <p>+I refers to {@link RowKind#INSERT}, +U refers to {@link RowKind#UPDATE_AFTER}, -U refers
-     * to {@link RowKind#UPDATE_BEFORE}, -D refers to {@link RowKind#DELETE}.
-     */
-    private boolean checkInvalid(RowData last, RowData record) {
-        // first one of the batch could be a record with any type
-        if (last == null) {
-            return true;
-        } else {
-            if (RowDataUtil.isAccumulateMsg(last)) {
-                // +I/+U +I is invalid
-                return !RowDataUtil.isInsertMsg(record);
-            } else {
-                // -U/-D -U/-D is invalid
-                return !RowDataUtil.isRetractMsg(record);
             }
         }
     }
@@ -120,27 +96,14 @@ public class MiniBatchBufferJkUk implements MiniBatchBuffer {
         bundle.put(jk, val);
     }
 
-    private RowData getLastOne(RowData jk) {
-        int size = bundle.get(jk).size();
-        if (size == 0) {
-            return null;
-        }
-        return bundle.get(jk).get(size - 1);
-    }
-
     @Override
     public int addRecord(RowData jk, RowData uk, RowData record) throws Exception {
         if (isContainNoJoinKey(jk)) {
             addJoinKey(jk);
         }
-        RowData last = getLastOne(jk);
-        if (checkInvalid(last, record)) {
-            bundle.get(jk).add(record);
-            count++;
-            foldRecord(jk);
-        } else {
-            throw new TableException("MiniBatch join invalid record in MiniBatchBufferJkUk.");
-        }
+        bundle.get(jk).add(record);
+        count++;
+        foldRecord(jk);
         return count;
     }
 

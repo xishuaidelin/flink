@@ -73,7 +73,7 @@ public class MiniBatchBufferNoUk implements MiniBatchBuffer {
         dic.clear();
     }
 
-    public int size() {
+    public int processedSize() {
         return count;
     }
 

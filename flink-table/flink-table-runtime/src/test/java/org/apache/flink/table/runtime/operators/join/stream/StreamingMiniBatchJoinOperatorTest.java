@@ -305,7 +305,7 @@ public final class StreamingMiniBatchJoinOperatorTest
                         "TRUCK"));
     }
 
-    @Tag("miniBatchSize=15")
+    @Tag("miniBatchSize=13")
     @Test
     public void testInnerJoinWithHasUkWithinBatch() throws Exception {
         // +I +U / +I -U / +I -D / +U -D /+U +U
@@ -315,7 +315,9 @@ public final class StreamingMiniBatchJoinOperatorTest
                                 "Ord#1", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"), // 2
                         insertRecord("Ord#2", "LineOrd#2", "4 Bellevue Drive, Pottstown, PB 19464"),
                         insertRecord(
-                                "Ord#3", "LineOrd#3", "5 Bellevue Drive, Pottstown, PC 19464"), // 1
+                                "Ord#3",
+                                "LineOrd#10",
+                                "5 Bellevue Drive, Pottstown, PC 19464"), // 1
                         updateAfterRecord(
                                 "Ord#3",
                                 "LineOrd#10",
@@ -323,15 +325,11 @@ public final class StreamingMiniBatchJoinOperatorTest
                         updateAfterRecord(
                                 "Ord#5", "LineOrd#5", "7 Bellevue Drive, Pottstown, PE 19464"),
                         insertRecord(
-                                "Ord#6", "LineOrd#6", "8 Bellevue Drive, Pottstown, PF 19464"), // 3
+                                "Ord#6", "LineOrd#5", "8 Bellevue Drive, Pottstown, PF 19464"), // 3
                         updateBeforeRecord(
                                 "Ord#1", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"), // 2
                         deleteRecord(
                                 "Ord#6", "LineOrd#5", "7 Bellevue Drive, Pottstown, PE 19464"), // 3
-                        updateAfterRecord(
-                                "Ord#6", "LineOrd#6", "8 Bellevue Drive, Pottstown, PF 19464"), // 5
-                        updateAfterRecord(
-                                "Ord#6", "LineOrd#7", "8 Bellevue Drive, Pottstown, PF 19464"), // 5
                         updateBeforeRecord(
                                 "Ord#12",
                                 "LineOrd#4",
@@ -349,7 +347,6 @@ public final class StreamingMiniBatchJoinOperatorTest
         // "Ord#2", "LineOrd#2", "4 Bellevue Drive, Pottstown, PB 19464"
         // "Ord#3", "LineOrd#10", "xxx Bellevue Drive, Pottstown, PJ 19464"
         // "Ord#5", "LineOrd#5", "7 Bellevue Drive, Pottstown, PE 19464"
-        // "Ord#6", "LineOrd#7", "8 Bellevue Drive, Pottstown, PF 19464"
         assertor.shouldEmitNothing(testHarness);
         records =
                 Arrays.asList(
@@ -395,18 +392,17 @@ public final class StreamingMiniBatchJoinOperatorTest
         testHarness.processElement2(insertRecord("Ord#23", "LineOrd#10", "AIR"));
         assertor.shouldEmitNothing(testHarness);
         testHarness.processElement1(
-                updateAfterRecord(
-                        "Ord#4", "LineOrd#10", "xxx Bellevue Drive, Pottstown, PJ 19464"));
+                updateAfterRecord("Ord#4", "LineOrd#4", "xxx Bellevue Drive, Pottstown, PJ 19464"));
         assertor.shouldEmit(
                 testHarness,
                 rowOfKind(
                         RowKind.UPDATE_AFTER,
                         "Ord#4",
-                        "LineOrd#10",
+                        "LineOrd#4",
                         "xxx Bellevue Drive, Pottstown, PJ 19464",
-                        "Ord#23",
-                        "LineOrd#10",
-                        "AIR"));
+                        "Ord#22",
+                        "LineOrd#4",
+                        "SHIP"));
 
         // fold +I/+U -U/D (same and different jks)
         testHarness.processElement1(
@@ -712,7 +708,9 @@ public final class StreamingMiniBatchJoinOperatorTest
                                 "Ord#1", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"), // 2
                         insertRecord("Ord#2", "LineOrd#2", "4 Bellevue Drive, Pottstown, PB 19464"),
                         insertRecord(
-                                "Ord#3", "LineOrd#3", "5 Bellevue Drive, Pottstown, PC 19464"), // 1
+                                "Ord#3",
+                                "LineOrd#10",
+                                "5 Bellevue Drive, Pottstown, PC 19464"), // 1
                         updateAfterRecord(
                                 "Ord#3",
                                 "LineOrd#10",
@@ -720,15 +718,15 @@ public final class StreamingMiniBatchJoinOperatorTest
                         updateAfterRecord(
                                 "Ord#5", "LineOrd#5", "7 Bellevue Drive, Pottstown, PE 19464"),
                         insertRecord(
-                                "Ord#6", "LineOrd#6", "8 Bellevue Drive, Pottstown, PF 19464"), // 3
+                                "Ord#6", "LineOrd#5", "8 Bellevue Drive, Pottstown, PF 19464"), // 3
                         updateBeforeRecord(
                                 "Ord#1", "LineOrd#1", "3 Bellevue Drive, Pottstown, PA 19464"), // 2
                         deleteRecord(
                                 "Ord#6", "LineOrd#5", "7 Bellevue Drive, Pottstown, PE 19464"), // 3
                         updateAfterRecord(
-                                "Ord#6", "LineOrd#6", "8 Bellevue Drive, Pottstown, PF 19464"), // 5
-                        updateAfterRecord(
                                 "Ord#6", "LineOrd#7", "8 Bellevue Drive, Pottstown, PF 19464"), // 5
+                        updateAfterRecord(
+                                "Ord#6", "LineOrd#7", "9 Bellevue Drive, Pottstown, PF 19464"), // 5
                         updateBeforeRecord(
                                 "Ord#12",
                                 "LineOrd#4",
@@ -746,7 +744,7 @@ public final class StreamingMiniBatchJoinOperatorTest
         // "Ord#2", "LineOrd#2", "4 Bellevue Drive, Pottstown, PB 19464"
         // "Ord#3", "LineOrd#10", "xxx Bellevue Drive, Pottstown, PJ 19464"
         // "Ord#5", "LineOrd#5", "7 Bellevue Drive, Pottstown, PE 19464"
-        // "Ord#6", "LineOrd#7", "8 Bellevue Drive, Pottstown, PF 19464"
+        // "Ord#6", "LineOrd#7", "9 Bellevue Drive, Pottstown, PF 19464"
         assertor.shouldEmitNothing(testHarness);
         records =
                 Arrays.asList(
@@ -761,7 +759,7 @@ public final class StreamingMiniBatchJoinOperatorTest
                         RowKind.INSERT,
                         "Ord#6",
                         "LineOrd#7",
-                        "8 Bellevue Drive, Pottstown, PF 19464",
+                        "9 Bellevue Drive, Pottstown, PF 19464",
                         null,
                         null,
                         null),
