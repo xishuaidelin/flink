@@ -123,12 +123,12 @@ public class StreamingJoinOperator extends AbstractStreamingJoinOperator {
 
     @Override
     public void processElement1(StreamRecord<RowData> element) throws Exception {
-        processElement(element.getValue(), leftRecordStateView, rightRecordStateView, true);
+        processElement(element.getValue(), leftRecordStateView, rightRecordStateView, true, false);
     }
 
     @Override
     public void processElement2(StreamRecord<RowData> element) throws Exception {
-        processElement(element.getValue(), rightRecordStateView, leftRecordStateView, false);
+        processElement(element.getValue(), rightRecordStateView, leftRecordStateView, false, false);
     }
 
     /**
@@ -196,12 +196,14 @@ public class StreamingJoinOperator extends AbstractStreamingJoinOperator {
      * @param inputSideStateView state of input side
      * @param otherSideStateView state of other side
      * @param inputIsLeft whether input side is left side
+     * @param isPair the input is either -U or +U which belongs to a pair of (-U,+U)
      */
     protected void processElement(
             RowData input,
             JoinRecordStateView inputSideStateView,
             JoinRecordStateView otherSideStateView,
-            boolean inputIsLeft)
+            boolean inputIsLeft,
+            boolean isPair)
             throws Exception {
         boolean inputIsOuter = inputIsLeft ? leftIsOuter : rightIsOuter;
         boolean otherIsOuter = inputIsLeft ? rightIsOuter : leftIsOuter;
@@ -228,7 +230,7 @@ public class StreamingJoinOperator extends AbstractStreamingJoinOperator {
                         for (OuterRecord outerRecord : associatedRecords.getOuterRecords()) {
                             RowData other = outerRecord.record;
                             // if the matched num in the matched rows == 0
-                            if (outerRecord.numOfAssociations == 0) {
+                            if (outerRecord.numOfAssociations == 0 && !isPair) {
                                 // send -D[null+other]
                                 outRow.setRowKind(RowKind.DELETE);
                                 outputNullPadding(other, !inputIsLeft);
@@ -278,7 +280,9 @@ public class StreamingJoinOperator extends AbstractStreamingJoinOperator {
             }
         } else { // input record is retract
             // state.retract(record)
-            inputSideStateView.retractRecord(input);
+            if (!isPair) {
+                inputSideStateView.retractRecord(input);
+            }
             if (associatedRecords.isEmpty()) { // there is no matched rows on the other side
                 if (inputIsOuter) { // input side is outer
                     // send -D[record+null]
@@ -302,7 +306,7 @@ public class StreamingJoinOperator extends AbstractStreamingJoinOperator {
                     OuterJoinRecordStateView otherSideOuterStateView =
                             (OuterJoinRecordStateView) otherSideStateView;
                     for (OuterRecord outerRecord : associatedRecords.getOuterRecords()) {
-                        if (outerRecord.numOfAssociations == 1) {
+                        if (outerRecord.numOfAssociations == 1 && !isPair) {
                             // send +I[null+other]
                             outRow.setRowKind(RowKind.INSERT);
                             outputNullPadding(outerRecord.record, !inputIsLeft);

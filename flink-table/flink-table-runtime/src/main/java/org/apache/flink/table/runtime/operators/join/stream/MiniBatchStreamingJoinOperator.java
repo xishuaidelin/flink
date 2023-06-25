@@ -21,6 +21,7 @@ package org.apache.flink.table.runtime.operators.join.stream;
 import org.apache.flink.streaming.api.watermark.Watermark;
 import org.apache.flink.streaming.runtime.streamrecord.StreamRecord;
 import org.apache.flink.table.data.RowData;
+import org.apache.flink.table.data.util.RowDataUtil;
 import org.apache.flink.table.runtime.generated.GeneratedJoinCondition;
 import org.apache.flink.table.runtime.operators.bundle.trigger.BundleTriggerCallback;
 import org.apache.flink.table.runtime.operators.bundle.trigger.CoBundleTrigger;
@@ -35,6 +36,7 @@ import org.apache.flink.table.runtime.operators.metrics.SimpleGauge;
 import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
 
 import java.io.Serializable;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -166,17 +168,79 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
     protected abstract ReduceStats processBundles(
             MiniBatchBuffer leftBuffer, MiniBatchBuffer rightBuffer) throws Exception;
 
+    /**
+     * RetractMsg+accumulatingMsg would be optimized which would keep sending retractMsg but do not
+     * deal with state.
+     */
     protected int processSingleSideBundles(
             MiniBatchBuffer inputBuffer,
             JoinRecordStateView inputSideStateView,
             JoinRecordStateView otherSideStateView,
             boolean inputIsLeft)
             throws Exception {
+        if (inputBuffer instanceof MiniBatchBufferNoUk) {
+            for (Map.Entry<RowData, List<RowData>> entry :
+                    inputBuffer.getRecordsWithJk().entrySet()) {
+                // set state key first
+                setCurrentKey(entry.getKey());
+                for (RowData rowData : entry.getValue()) {
+                    processElement(
+                            rowData, inputSideStateView, otherSideStateView, inputIsLeft, false);
+                }
+            }
+            return 0;
+        }
         for (Map.Entry<RowData, List<RowData>> entry : inputBuffer.getRecordsWithJk().entrySet()) {
             // set state key first
             setCurrentKey(entry.getKey());
-            for (RowData rowData : entry.getValue()) {
-                processElement(rowData, inputSideStateView, otherSideStateView, inputIsLeft);
+            Iterator<RowData> iter = entry.getValue().iterator();
+            RowData pre = null; // always retractMsg if not null
+            while (iter.hasNext()) {
+                RowData current = iter.next();
+                if (RowDataUtil.isRetractMsg(current) && iter.hasNext()) {
+                    RowData next = iter.next();
+                    if (RowDataUtil.isAccumulateMsg(next)) {
+                        processElement(
+                                current, inputSideStateView, otherSideStateView, inputIsLeft, true);
+                        processElement(
+                                next, inputSideStateView, otherSideStateView, inputIsLeft, true);
+                    } else {
+                        // retract + retract
+                        pre = next;
+                        processElement(
+                                current,
+                                inputSideStateView,
+                                otherSideStateView,
+                                inputIsLeft,
+                                false);
+                    }
+                } else {
+                    // 1. current is accumulateMsg 2. current is retractMsg and no next row
+                    if (pre == null) {
+                        // directly deal with the recordc no matter what case is
+                        processElement(
+                                current,
+                                inputSideStateView,
+                                otherSideStateView,
+                                inputIsLeft,
+                                false);
+                    } else if (RowDataUtil.isAccumulateMsg(current)) {
+                        // pre is always retract
+                        processElement(
+                                pre, inputSideStateView, otherSideStateView, inputIsLeft, true);
+                        processElement(
+                                current, inputSideStateView, otherSideStateView, inputIsLeft, true);
+                    } else {
+                        processElement(
+                                pre, inputSideStateView, otherSideStateView, inputIsLeft, false);
+                        processElement(
+                                current,
+                                inputSideStateView,
+                                otherSideStateView,
+                                inputIsLeft,
+                                false);
+                    }
+                }
             }
         }
         // retain this reduce size parameter for next step optimization
