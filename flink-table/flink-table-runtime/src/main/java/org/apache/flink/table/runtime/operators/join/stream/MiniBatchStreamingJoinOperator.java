@@ -197,49 +197,33 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
             RowData pre = null; // always retractMsg if not null
             while (iter.hasNext()) {
                 RowData current = iter.next();
+                boolean isPair = false;
                 if (RowDataUtil.isRetractMsg(current) && iter.hasNext()) {
                     RowData next = iter.next();
                     if (RowDataUtil.isAccumulateMsg(next)) {
-                        processElement(
-                                current, inputSideStateView, otherSideStateView, inputIsLeft, true);
-                        processElement(
-                                next, inputSideStateView, otherSideStateView, inputIsLeft, true);
+                        isPair = true;
                     } else {
                         // retract + retract
                         pre = next;
+                    }
+                    processElement(
+                            current, inputSideStateView, otherSideStateView, inputIsLeft, isPair);
+                    if (isPair) {
                         processElement(
-                                current,
-                                inputSideStateView,
-                                otherSideStateView,
-                                inputIsLeft,
-                                false);
+                                next, inputSideStateView, otherSideStateView, inputIsLeft, isPair);
                     }
                 } else {
                     // 1. current is accumulateMsg 2. current is retractMsg and no next row
-                    if (pre == null) {
-                        // directly deal with the recordc no matter what case is
+                    if (pre != null) {
+                        if (RowDataUtil.isAccumulateMsg(current)) {
+                            isPair = true;
+                        }
                         processElement(
-                                current,
-                                inputSideStateView,
-                                otherSideStateView,
-                                inputIsLeft,
-                                false);
-                    } else if (RowDataUtil.isAccumulateMsg(current)) {
-                        // pre is always retract
-                        processElement(
-                                pre, inputSideStateView, otherSideStateView, inputIsLeft, true);
-                        processElement(
-                                current, inputSideStateView, otherSideStateView, inputIsLeft, true);
-                    } else {
-                        processElement(
-                                pre, inputSideStateView, otherSideStateView, inputIsLeft, false);
-                        processElement(
-                                current,
-                                inputSideStateView,
-                                otherSideStateView,
-                                inputIsLeft,
-                                false);
+                                pre, inputSideStateView, otherSideStateView, inputIsLeft, isPair);
+                        pre = null;
                     }
+                    processElement(
+                            current, inputSideStateView, otherSideStateView, inputIsLeft, isPair);
                 }
             }
         }

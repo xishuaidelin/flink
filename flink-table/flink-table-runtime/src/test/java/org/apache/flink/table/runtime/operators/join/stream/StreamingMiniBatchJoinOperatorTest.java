@@ -28,6 +28,7 @@ import org.apache.flink.table.types.logical.LogicalType;
 import org.apache.flink.table.types.logical.RowType;
 import org.apache.flink.types.RowKind;
 
+import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestInfo;
@@ -797,6 +798,66 @@ public final class StreamingMiniBatchJoinOperatorTest
                         "SHIP"));
     }
 
+    /** special for the pair of retract and accumulate. */
+    private void testLeftJoin() throws Exception {
+        List<StreamRecord<RowData>> records =
+                Arrays.asList(
+                        insertRecord(
+                                "Ord#2", "LineOrd#2", "4 Bellevue Drive, Pottstown, PB 19464"));
+        for (StreamRecord<RowData> row : records) {
+            testHarness.processElement1(row);
+        }
+        assertor.shouldEmitNothing(testHarness);
+        records =
+                Arrays.asList(
+                        insertRecord("Ord#2", "LineOrd#2", "SHIP"),
+                        updateBeforeRecord("Ord#2", "LineOrd#2", "SHIP"),
+                        updateAfterRecord("Ord#2", "LineOrd#2", "AIR"));
+        for (StreamRecord<RowData> row : records) {
+            testHarness.processElement2(row);
+        }
+        assertor.shouldEmit(
+                testHarness,
+                rowOfKind(
+                        RowKind.INSERT,
+                        "Ord#2",
+                        "LineOrd#2",
+                        "4 Bellevue Drive, Pottstown, PB 19464",
+                        "Ord#2",
+                        "LineOrd#2",
+                        "SHIP"),
+                rowOfKind(
+                        RowKind.UPDATE_BEFORE,
+                        "Ord#2",
+                        "LineOrd#2",
+                        "4 Bellevue Drive, Pottstown, PB 19464",
+                        "Ord#2",
+                        "LineOrd#2",
+                        "SHIP"),
+                rowOfKind(
+                        RowKind.INSERT,
+                        "Ord#2",
+                        "LineOrd#2",
+                        "4 Bellevue Drive, Pottstown, PB 19464",
+                        "Ord#2",
+                        "LineOrd#2",
+                        "AIR"));
+    }
+
+    @Test
+    @Tag("miniBatchSize=2")
+    @DisplayName("LeftJoinHasUkRetAndAcc")
+    public void test1() throws Exception {
+        testLeftJoin();
+    }
+
+    @Tag("miniBatchSize=2")
+    @DisplayName("LeftJoinJkUkRetAndAcc")
+    @Test
+    public void test3() throws Exception {
+        testLeftJoin();
+    }
+
     @Tag("miniBatchSize=15")
     @Test
     public void testLeftJoinWithNoUk() throws Exception {
@@ -883,8 +944,10 @@ public final class StreamingMiniBatchJoinOperatorTest
                     return FlinkJoinType.INNER;
                 } else if (testDisplayName.contains("LeftJoin")) {
                     return FlinkJoinType.LEFT;
-                } else {
+                } else if (testDisplayName.contains("RightJoin")) {
                     return FlinkJoinType.RIGHT;
+                } else {
+                    return FlinkJoinType.FULL;
                 }
             };
 

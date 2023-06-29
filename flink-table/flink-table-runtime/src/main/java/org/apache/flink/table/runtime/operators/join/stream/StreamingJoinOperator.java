@@ -256,8 +256,8 @@ public class StreamingJoinOperator extends AbstractStreamingJoinOperator {
                         OuterJoinRecordStateView otherSideOuterStateView =
                                 (OuterJoinRecordStateView) otherSideStateView;
                         for (OuterRecord outerRecord : associatedRecords.getOuterRecords()) {
-                            if (outerRecord.numOfAssociations
-                                    == 0) { // if the matched num in the matched rows == 0
+                            if (outerRecord.numOfAssociations == 0
+                                    && !isPair) { // if the matched num in the matched rows == 0
                                 // send -D[null+other]
                                 outRow.setRowKind(RowKind.DELETE);
                                 outputNullPadding(outerRecord.record, !inputIsLeft);
