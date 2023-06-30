@@ -40,7 +40,7 @@ class StreamingJoinWithMiniBatchTestBase(miniBatch: MiniBatchMode, state: StateB
         tableConfig.set(
           ExperimentalExecutionConfigOptions.TABLE_EXEC_STREAM_JOIN_MINI_BATCH_ENABLED,
           Boolean.box(true));
-        tableConfig.set(ExecutionConfigOptions.TABLE_EXEC_MINIBATCH_SIZE, Long.box(20));
+        tableConfig.set(ExecutionConfigOptions.TABLE_EXEC_MINIBATCH_SIZE, Long.box(10));
         tableConfig.set(
           ExecutionConfigOptions.TABLE_EXEC_MINIBATCH_ALLOW_LATENCY,
           Duration.ofMillis(10));

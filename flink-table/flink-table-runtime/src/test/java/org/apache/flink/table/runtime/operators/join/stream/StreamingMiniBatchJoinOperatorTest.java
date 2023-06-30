@@ -798,7 +798,7 @@ public final class StreamingMiniBatchJoinOperatorTest
                         "SHIP"));
     }
 
-    /** special for the pair of retract and accumulate. */
+    /** Special for the pair of retract and accumulate. */
     private void testLeftJoin() throws Exception {
         List<StreamRecord<RowData>> records =
                 Arrays.asList(

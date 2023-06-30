@@ -69,26 +69,22 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
 
         this.coBundleTrigger = parameter.coBundleTrigger;
     }
+    private MiniBatchBuffer initialBuffer(JoinInputSideSpec inputSideSpec){
+        if (inputSideSpec.joinKeyContainsUniqueKey()) {
+            return new MiniBatchBufferJkUk();
+        }
+        if (inputSideSpec.hasUniqueKey()) {
+            return new MiniBatchBufferHasUk();
+        }
+        return new MiniBatchBufferNoUk();
+    }
 
     @Override
     public void open() throws Exception {
         super.open();
 
-        if (leftInputSideSpec.joinKeyContainsUniqueKey()) {
-            this.leftBuffer = new MiniBatchBufferJkUk();
-        } else if (leftInputSideSpec.hasUniqueKey()) {
-            this.leftBuffer = new MiniBatchBufferHasUk();
-        } else {
-            this.leftBuffer = new MiniBatchBufferNoUk();
-        }
-
-        if (rightInputSideSpec.joinKeyContainsUniqueKey()) {
-            this.rightBuffer = new MiniBatchBufferJkUk();
-        } else if (rightInputSideSpec.hasUniqueKey()) {
-            this.rightBuffer = new MiniBatchBufferHasUk();
-        } else {
-            this.rightBuffer = new MiniBatchBufferNoUk();
-        }
+        this.leftBuffer = initialBuffer(leftInputSideSpec);
+        this.rightBuffer = initialBuffer(rightInputSideSpec);
 
         coBundleTrigger.registerCallback(this);
         coBundleTrigger.reset();
