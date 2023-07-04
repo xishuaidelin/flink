@@ -64,12 +64,13 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
                 parameter.leftIsOuter,
                 parameter.rightIsOuter,
                 parameter.filterNullKeys,
-                parameter.stateRetentionTime,
-                parameter.stateRetentionTime);
+                parameter.leftStateRetentionTime,
+                parameter.rightStateRetentionTime);
 
         this.coBundleTrigger = parameter.coBundleTrigger;
     }
-    private MiniBatchBuffer initialBuffer(JoinInputSideSpec inputSideSpec){
+
+    private MiniBatchBuffer initialBuffer(JoinInputSideSpec inputSideSpec) {
         if (inputSideSpec.joinKeyContainsUniqueKey()) {
             return new MiniBatchBufferJkUk();
         }
@@ -237,7 +238,8 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
             boolean leftIsOuter,
             boolean rightIsOuter,
             boolean[] filterNullKeys,
-            long stateRetentionTime,
+            long leftStateRetentionTime,
+            long rightStateRetentionTime,
             CoBundleTrigger<RowData, RowData> coBundleTrigger) {
         MiniBatchStreamingJoinParameter parameter =
                 new MiniBatchStreamingJoinParameter(
@@ -249,7 +251,8 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
                         leftIsOuter,
                         rightIsOuter,
                         filterNullKeys,
-                        stateRetentionTime,
+                        leftStateRetentionTime,
+                        rightStateRetentionTime,
                         coBundleTrigger);
         switch (joinType) {
             case INNER:
@@ -274,7 +277,9 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
         boolean leftIsOuter;
         boolean rightIsOuter;
         boolean[] filterNullKeys;
-        long stateRetentionTime;
+        long leftStateRetentionTime;
+        long rightStateRetentionTime;
+
         CoBundleTrigger<RowData, RowData> coBundleTrigger;
 
         MiniBatchStreamingJoinParameter(
@@ -286,7 +291,8 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
                 boolean leftIsOuter,
                 boolean rightIsOuter,
                 boolean[] filterNullKeys,
-                long stateRetentionTime,
+                long leftStateRetentionTime,
+                long rightStateRetentionTime,
                 CoBundleTrigger<RowData, RowData> coBundleTrigger) {
             this.leftType = leftType;
             this.rightType = rightType;
@@ -296,7 +302,8 @@ public abstract class MiniBatchStreamingJoinOperator extends StreamingJoinOperat
             this.leftIsOuter = leftIsOuter;
             this.rightIsOuter = rightIsOuter;
             this.filterNullKeys = filterNullKeys;
-            this.stateRetentionTime = stateRetentionTime;
+            this.leftStateRetentionTime = leftStateRetentionTime;
+            this.rightStateRetentionTime = rightStateRetentionTime;
             this.coBundleTrigger = coBundleTrigger;
         }
     }

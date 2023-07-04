@@ -73,6 +73,7 @@ public final class StreamingMiniBatchJoinOperatorTest
                 isOuter[1],
                 new boolean[] {true},
                 ttl[0],
+                ttl[0],
                 new CountCoBundleTrigger<>(batchSize));
     }
 
