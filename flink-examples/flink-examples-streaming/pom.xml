@@ -334,6 +334,31 @@ under the License.
 						</configuration>
 					</execution>
 
+					<!-- JoinWithBroadCast -->
+					<execution>
+						<id>JoinWithBroadCast</id>
+						<phase>package</phase>
+						<goals>
+							<goal>jar</goal>
+						</goals>
+						<configuration>
+							<classifier>JoinWithBroadCast</classifier>
+
+							<archive>
+								<manifestEntries>
+									<program-class>org.apache.flink.streaming.examples.joinwithbroadcast.JoinWithBroadCast</program-class>
+								</manifestEntries>
+							</archive>
+
+							<includes>
+								<include>org/apache/flink/streaming/examples/joinwithbroadcast/JoinWithBroadCast.class</include>
+								<include>org/apache/flink/streaming/examples/joinwithbroadcast/JoinSampleData.class</include>
+								<include>META-INF/LICENSE</include>
+								<include>META-INF/NOTICE</include>
+							</includes>
+						</configuration>
+					</execution>
+
 					<!-- BroadcastState -->
 					<execution>
 						<id>BroadcastStateSample</id>
@@ -439,6 +464,7 @@ under the License.
 								<copy file="${project.basedir}/target/flink-examples-streaming-${project.version}-WordCount.jar" tofile="${project.basedir}/target/WordCount.jar" />
 								<copy file="${project.basedir}/target/flink-examples-streaming-${project.version}-SocketWindowWordCount.jar" tofile="${project.basedir}/target/SocketWindowWordCount.jar" />
 								<copy file="${project.basedir}/target/flink-examples-streaming-${project.version}-BroadcastStateSample.jar" tofile="${project.basedir}/target/BroadcastStateSample.jar" />
+								<copy file="${project.basedir}/target/flink-examples-streaming-${project.version}-JoinWithBroadCast.jar" tofile="${project.basedir}/target/JoinWithBroadCast.jar" />
 							</target>
 						</configuration>
 					</execution>
