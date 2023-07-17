@@ -22,8 +22,8 @@ import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.typeinfo.TypeHint;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.common.typeinfo.Types;
-import org.apache.flink.api.java.tuple.Tuple2;
 import org.apache.flink.api.java.tuple.Tuple3;
+import org.apache.flink.api.java.tuple.Tuple5;
 import org.apache.flink.api.java.utils.ParameterTool;
 import org.apache.flink.streaming.api.datastream.DataStream;
 import org.apache.flink.streaming.api.environment.StreamExecutionEnvironment;
@@ -41,13 +41,14 @@ import org.apache.flink.util.Collector;
  */
 public class JoinWithBroadCast {
     public static void main(String[] args) throws Exception {
+
         // parse the parameters
         final ParameterTool params = ParameterTool.fromArgs(args);
-        //        final long rate = params.getLong("rate", 50000L);
+        final long rate = params.getLong("rate", 256L);
 
-        final long rate = 50000L;
-
-        System.out.println("To customize example, use: Join [--rate <elements-per-second>]");
+        System.out.println("Using data rate=" + rate);
+        System.out.println(
+                "To customize example, use: JoinWithBroadCast [--rate <elements-per-second>]");
 
         // obtain execution environment, run this example in "ingestion time"
         StreamExecutionEnvironment env = StreamExecutionEnvironment.getExecutionEnvironment();
@@ -56,70 +57,65 @@ public class JoinWithBroadCast {
         env.getConfig().setGlobalJobParameters(params);
 
         // create the data sources for both grades and salaries
-        DataStream<Tuple2<String, Integer>> grades =
+        DataStream<Tuple3<String, String, String>> grades =
                 JoinSampleData.GradeSource.getSource(env, rate);
 
-        DataStream<Tuple2<String, Integer>> salaries =
+        DataStream<Tuple3<String, String, String>> salaries =
                 JoinSampleData.SalarySource.getSource(env, rate);
 
         // run the actual window join program
         // for testability, this functionality is in a separate method.
-        DataStream<Tuple3<String, Integer, Integer>> joinedStream =
+        DataStream<Tuple5<String, String, String, String, String>> joinedStream =
                 runBroadcastJoin(grades, salaries);
 
         // print the results with a single thread, rather than in parallel
         joinedStream.print().setParallelism(1);
 
         // execute program
-        env.execute("Broadcast Join Example");
+        env.execute("BroadcastJoinExample");
     }
 
-    public static DataStream<Tuple3<String, Integer, Integer>> runBroadcastJoin(
-            DataStream<Tuple2<String, Integer>> grades,
-            DataStream<Tuple2<String, Integer>> salaries) {
+    public static DataStream<Tuple5<String, String, String, String, String>> runBroadcastJoin(
+            DataStream<Tuple3<String, String, String>> grades,
+            DataStream<Tuple3<String, String, String>> salaries) {
 
-        MapStateDescriptor<String, Tuple2<String, Integer>> bcStateDescriptor =
+        MapStateDescriptor<String, Tuple3<String, String, String>> bcStateDescriptor =
                 new MapStateDescriptor<>(
                         "name_salary",
                         Types.STRING,
-                        TypeInformation.of(new TypeHint<Tuple2<String, Integer>>() {}));
+                        TypeInformation.of(new TypeHint<Tuple3<String, String, String>>() {}));
 
         return grades.connect(salaries.broadcast(bcStateDescriptor))
                 .process(
                         new BroadcastProcessFunction<
-                                Tuple2<String, Integer>,
-                                Tuple2<String, Integer>,
-                                Tuple3<String, Integer, Integer>>() {
+                                Tuple3<String, String, String>,
+                                Tuple3<String, String, String>,
+                                Tuple5<String, String, String, String, String>>() {
                             // pattern match
                             @Override
                             public void processBroadcastElement(
-                                    Tuple2<String, Integer> value,
+                                    Tuple3<String, String, String> value,
                                     Context ctx,
-                                    Collector<Tuple3<String, Integer, Integer>> out)
+                                    Collector<Tuple5<String, String, String, String, String>> out)
                                     throws Exception {
                                 ctx.getBroadcastState(bcStateDescriptor).put(value.f0, value);
                             }
 
                             @Override
                             public void processElement(
-                                    Tuple2<String, Integer> value,
+                                    Tuple3<String, String, String> value,
                                     ReadOnlyContext ctx,
-                                    Collector<Tuple3<String, Integer, Integer>> out)
+                                    Collector<Tuple5<String, String, String, String, String>> out)
                                     throws Exception {
-                                Tuple2<String, Integer> bcVal =
+                                Tuple3<String, String, String> bcVal =
                                         ctx.getBroadcastState(bcStateDescriptor).get(value.f0);
                                 if (bcVal != null) {
-                                    out.collect(new Tuple3<>(bcVal.f0, bcVal.f1, value.f1));
+                                    out.collect(
+                                            new Tuple5<>(
+                                                    bcVal.f0, bcVal.f1, bcVal.f2, value.f1,
+                                                    value.f2));
                                 }
                             }
                         });
     }
-    //
-    //    private static class NameKeySelector implements KeySelector<Tuple2<String, Integer>,
-    // String> {
-    //        @Override
-    //        public String getKey(Tuple2<String, Integer> value) {
-    //            return value.f0;
-    //        }
-    //    }
 }
