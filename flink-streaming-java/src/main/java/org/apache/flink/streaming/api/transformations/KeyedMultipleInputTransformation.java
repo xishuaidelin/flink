@@ -22,7 +22,10 @@ import org.apache.flink.annotation.Internal;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.dag.Transformation;
 import org.apache.flink.api.java.functions.KeySelector;
+import org.apache.flink.streaming.api.operators.MultipleInputStreamOperator;
+import org.apache.flink.streaming.api.operators.SimpleOperatorFactory;
 import org.apache.flink.streaming.api.operators.StreamOperatorFactory;
+import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -40,7 +43,18 @@ public class KeyedMultipleInputTransformation<OUT>
             TypeInformation<OUT> outputType,
             int parallelism,
             TypeInformation<?> stateKeyType) {
-        super(name, operatorFactory, outputType, parallelism);
+        super(name,operatorFactory, outputType, parallelism);
+        this.stateKeyType = stateKeyType;
+        updateManagedMemoryStateBackendUseCase(true);
+    }
+
+    public KeyedMultipleInputTransformation(
+            String name,
+            MultipleInputStreamOperator<OUT> operator,
+            TypeInformation<OUT> outputType,
+            int parallelism,
+            TypeInformation<?> stateKeyType) {
+        super(name,  SimpleOperatorFactory.of(operator), outputType, parallelism);
         this.stateKeyType = stateKeyType;
         updateManagedMemoryStateBackendUseCase(true);
     }

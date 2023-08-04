@@ -109,6 +109,7 @@ import org.apache.flink.util.OutputTag;
 import org.apache.flink.util.Preconditions;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 
@@ -229,6 +230,7 @@ public class DataStream<T> {
         unionedTransforms.add(this.transformation);
 
         for (DataStream<T> newStream : streams) {
+            newStream.partitionCustom()
             if (!getType().equals(newStream.getType())) {
                 throw new IllegalArgumentException(
                         "Cannot union streams of different types: "

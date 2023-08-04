@@ -23,7 +23,7 @@ import org.apache.flink.table.data.RowData
 import org.apache.flink.table.planner.JDouble
 import org.apache.flink.table.planner.calcite.FlinkTypeFactory
 import org.apache.flink.table.planner.codegen.{CodeGeneratorContext, ExprCodeGenerator, FunctionCodeGenerator}
-import org.apache.flink.table.planner.plan.nodes.exec.spec.JoinSpec
+import org.apache.flink.table.planner.plan.nodes.exec.spec.{JoinSpec,MultiJoinSpec}
 import org.apache.flink.table.planner.plan.nodes.logical.{FlinkLogicalJoin, FlinkLogicalSnapshot}
 import org.apache.flink.table.planner.plan.utils.IntervalJoinUtil.satisfyIntervalJoin
 import org.apache.flink.table.planner.plan.utils.TemporalJoinUtil.satisfyTemporalJoin
@@ -63,6 +63,11 @@ object JoinUtil {
       filterNulls.map(_.booleanValue()).toArray,
       nonEquiCondition)
   }
+
+  /** Validates that join keys in [[MultiJoinSpec]] is compatible in all sides of join, wait to implement.
+   *  before implementing this we need to implement the MultiJoinSpec.
+   * */
+  def validateMultiJoinSpec(joinSpec: MultiJoinSpec):Unit = {}
 
   /** Validates that join keys in [[JoinSpec]] is compatible in both sides of join. */
   def validateJoinSpec(

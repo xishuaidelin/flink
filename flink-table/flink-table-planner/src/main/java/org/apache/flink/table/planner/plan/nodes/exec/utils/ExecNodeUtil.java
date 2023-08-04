@@ -18,14 +18,21 @@
 
 package org.apache.flink.table.planner.plan.nodes.exec.utils;
 
+import org.apache.flink.api.common.state.MapStateDescriptor;
 import org.apache.flink.api.common.typeinfo.TypeInformation;
 import org.apache.flink.api.connector.source.Boundedness;
 import org.apache.flink.api.dag.Transformation;
+import org.apache.flink.api.java.functions.KeySelector;
 import org.apache.flink.core.memory.ManagedMemoryUseCase;
+import org.apache.flink.streaming.api.functions.co.KeyedBroadcastProcessFunction;
 import org.apache.flink.streaming.api.operators.SimpleOperatorFactory;
 import org.apache.flink.streaming.api.operators.StreamOperator;
 import org.apache.flink.streaming.api.operators.StreamOperatorFactory;
 import org.apache.flink.streaming.api.operators.TwoInputStreamOperator;
+import org.apache.flink.streaming.api.transformations.BroadcastStateTransformation;
+import org.apache.flink.streaming.api.transformations.KeyedBroadcastStateMultipleInputTransformation;
+import org.apache.flink.streaming.api.transformations.KeyedBroadcastStateTransformation;
+import org.apache.flink.streaming.api.transformations.KeyedMultipleInputTransformation;
 import org.apache.flink.streaming.api.transformations.LegacySourceTransformation;
 import org.apache.flink.streaming.api.transformations.OneInputTransformation;
 import org.apache.flink.streaming.api.transformations.TwoInputTransformation;
@@ -334,6 +341,59 @@ public class ExecNodeUtil {
         transformationMeta.fill(transformation);
         return transformation;
     }
+
+    public static <O> KeyedBroadcastStateMultipleInputTransformation<O> createKeyedBroadcastStateMultipleInputTransformation(
+            TransformationMetadata transformationMeta,
+            StreamOperatorFactory<O> operatorFactory,
+            TypeInformation<O> outputType,
+            int parallelism,
+            long memoryBytes,
+            TypeInformation<?> stateKeyType,
+            List<MapStateDescriptor<?, ?>> broadcastStateDescriptors,
+            int numNonBcInputs) {
+        KeyedBroadcastStateMultipleInputTransformation<O> transformation =
+                new KeyedBroadcastStateMultipleInputTransformation<>(
+                        transformationMeta.getName(),
+                        operatorFactory,
+                        outputType,
+                        parallelism,
+                        stateKeyType,
+                        broadcastStateDescriptors,
+                        numNonBcInputs
+                        );
+        setManagedMemoryWeight(transformation, memoryBytes);
+        transformationMeta.fill(transformation);
+        return transformation;
+    }
+
+//    public static <KEY, IN1, IN2, OUT> KeyedBroadcastStateTransformation<KEY, IN1, IN2, OUT> createKeyedBroadcastStateTransformation(
+//            String name,
+//            Transformation<IN1> inputStream,
+//            Transformation<IN2> broadcastStream,
+//            KeyedBroadcastProcessFunction<KEY, IN1, IN2, OUT> userFunction,
+//            List<MapStateDescriptor<?, ?>> broadcastStateDescriptors,
+//            TypeInformation<KEY> keyType,
+//            KeySelector<IN1, KEY> keySelector,
+//            TypeInformation<OUT> outTypeInfo,
+//            int parallelism,
+//            boolean parallelismConfigured){
+//        KeyedBroadcastStateTransformation<KEY, IN1, IN2, OUT> transformation =
+//                new KeyedBroadcastStateTransformation<>(
+//                        name,
+//                        inputStream,
+//                        broadcastStream,
+//                        userFunction,
+//                        broadcastStateDescriptors,
+//                        keyType,
+//                        keySelector,
+//                        outTypeInfo,
+//                        parallelism,
+//                        parallelismConfigured);
+////        setManagedMemoryWeight(transformation, memoryBytes);
+////        transformationMeta.fill(transformation);
+//        return transformation;
+//    }
+
 
     /** Create a {@link TwoInputTransformation} with memoryBytes. */
     public static <I1, I2, O> TwoInputTransformation<I1, I2, O> createTwoInputTransformation(
