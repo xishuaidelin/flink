@@ -30,6 +30,7 @@ import org.apache.flink.table.runtime.operators.join.JoinConditionWithNullFilter
 import org.apache.flink.table.runtime.operators.join.stream.state.JoinInputSideSpec;
 import org.apache.flink.table.runtime.operators.join.stream.state.JoinRecordStateView;
 import org.apache.flink.table.runtime.operators.join.stream.state.OuterJoinRecordStateView;
+import org.apache.flink.table.runtime.typeutils.AbstractRowDataSerializer;
 import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
 import org.apache.flink.util.IterableIterator;
 
@@ -65,6 +66,10 @@ public abstract class AbstractStreamingJoinOperator extends AbstractStreamOperat
 
     protected transient JoinConditionWithNullFilters joinCondition;
     protected transient TimestampedCollector<RowData> collector;
+
+    protected transient boolean requiresCopy;
+    protected transient AbstractRowDataSerializer<RowData> leftSerializer;
+    protected transient AbstractRowDataSerializer<RowData> rightSerializer;
 
     public AbstractStreamingJoinOperator(
             InternalTypeInfo<RowData> leftType,

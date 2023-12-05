@@ -373,6 +373,18 @@ public class ExecutionConfigOptions {
                                     + " is set true, its value must be greater than zero.");
 
     @Documentation.TableOption(execMode = Documentation.ExecMode.STREAMING)
+    public static final ConfigOption<Boolean> TABLE_EXEC_STREAM_JOIN_MINI_BATCH_ENABLED =
+            key("table.exec.stream.join.mini-batch-enabled")
+                    .booleanType()
+                    .defaultValue(false)
+                    .withDescription(
+                            String.format(
+                                    "If true, the planner will create mini batch join operator if both '%s' and '%s' are configured. The default value is false.",
+                                    ExecutionConfigOptions.TABLE_EXEC_MINIBATCH_ENABLED.key(),
+                                    ExecutionConfigOptions.TABLE_EXEC_MINIBATCH_ALLOW_LATENCY
+                                            .key()));
+
+    @Documentation.TableOption(execMode = Documentation.ExecMode.STREAMING)
     public static final ConfigOption<Long> TABLE_EXEC_MINIBATCH_SIZE =
             key("table.exec.mini-batch.size")
                     .longType()

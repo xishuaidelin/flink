@@ -59,6 +59,14 @@ public class CountCoBundleTrigger<IN1, IN2> implements CoBundleTrigger<IN1, IN2>
     }
 
     @Override
+    public void onBundleSize(final long size) throws Exception {
+        if (size >= maxCount) {
+            callback.finishBundle();
+            reset();
+        }
+    }
+
+    @Override
     public void reset() {
         count = 0;
     }

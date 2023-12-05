@@ -26,6 +26,7 @@ import org.apache.flink.table.runtime.typeutils.InternalTypeInfo;
 import javax.annotation.Nullable;
 
 import java.io.Serializable;
+import java.util.Optional;
 
 import static org.apache.flink.util.Preconditions.checkNotNull;
 
@@ -38,17 +39,24 @@ public class JoinInputSideSpec implements Serializable {
 
     private final boolean inputSideHasUniqueKey;
     private final boolean joinKeyContainsUniqueKey;
+    @Nullable private final int[] uniqueKeys;
     @Nullable private final InternalTypeInfo<RowData> uniqueKeyType;
     @Nullable private final KeySelector<RowData, RowData> uniqueKeySelector;
 
     private JoinInputSideSpec(
             boolean joinKeyContainsUniqueKey,
+            @Nullable int[] uniqueKeys,
             @Nullable InternalTypeInfo<RowData> uniqueKeyType,
             @Nullable KeySelector<RowData, RowData> uniqueKeySelector) {
         this.inputSideHasUniqueKey = uniqueKeyType != null && uniqueKeySelector != null;
         this.joinKeyContainsUniqueKey = joinKeyContainsUniqueKey;
+        this.uniqueKeys = uniqueKeys;
         this.uniqueKeyType = uniqueKeyType;
         this.uniqueKeySelector = uniqueKeySelector;
+    }
+
+    public Optional<int[]> getUniqueKeys() {
+        return Optional.ofNullable(uniqueKeys);
     }
 
     /** Returns true if the input has unique key, otherwise false. */
@@ -86,11 +94,12 @@ public class JoinInputSideSpec implements Serializable {
      * @param uniqueKeySelector key selector to extract unique key from the input row
      */
     public static JoinInputSideSpec withUniqueKey(
+            int[] uniqueKeys,
             InternalTypeInfo<RowData> uniqueKeyType,
             KeySelector<RowData, RowData> uniqueKeySelector) {
         checkNotNull(uniqueKeyType);
         checkNotNull(uniqueKeySelector);
-        return new JoinInputSideSpec(false, uniqueKeyType, uniqueKeySelector);
+        return new JoinInputSideSpec(false, uniqueKeys, uniqueKeyType, uniqueKeySelector);
     }
 
     /**
@@ -101,16 +110,17 @@ public class JoinInputSideSpec implements Serializable {
      * @param uniqueKeySelector key selector to extract unique key from the input row
      */
     public static JoinInputSideSpec withUniqueKeyContainedByJoinKey(
+            int[] uniqueKeys,
             InternalTypeInfo<RowData> uniqueKeyType,
             KeySelector<RowData, RowData> uniqueKeySelector) {
         checkNotNull(uniqueKeyType);
         checkNotNull(uniqueKeySelector);
-        return new JoinInputSideSpec(true, uniqueKeyType, uniqueKeySelector);
+        return new JoinInputSideSpec(true, uniqueKeys, uniqueKeyType, uniqueKeySelector);
     }
 
     /** Creates a {@link JoinInputSideSpec} that input hasn't any unique keys. */
     public static JoinInputSideSpec withoutUniqueKey() {
-        return new JoinInputSideSpec(false, null, null);
+        return new JoinInputSideSpec(false, null, null, null);
     }
 
     @Override

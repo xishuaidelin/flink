@@ -33,6 +33,12 @@ public abstract class AbstractRowDataSerializer<T extends RowData> extends Paged
     /** Get the number of fields. */
     public abstract int getArity();
 
+    /** Convert a {@link RowData} to a serialized row. */
+    public RowData toSerializedRow(T rowData, boolean requiresCopy) throws IOException {
+        BinaryRowData row = toBinaryRow(rowData);
+        return requiresCopy ? row.copy() : row;
+    }
+
     /** Convert a {@link RowData} to a {@link BinaryRowData}. */
     public abstract BinaryRowData toBinaryRow(T rowData) throws IOException;
 }
